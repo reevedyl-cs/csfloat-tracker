@@ -31,6 +31,7 @@
       color: #94a3b8;
       font-size: 15px;
       margin-bottom: 16px;
+      line-height: 1.4;
     }
 
     .search-wrap {
@@ -44,12 +45,12 @@
       padding: 16px;
       font-size: 18px;
       box-sizing: border-box;
+      width: 100%;
     }
 
     input {
       background: #475569;
       color: white;
-      width: 100%;
     }
 
     button {
@@ -57,19 +58,16 @@
       color: white;
       cursor: pointer;
       margin-top: 12px;
-      width: 100%;
     }
 
     .dropdown {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      right: 0;
+      position: relative;
+      margin-top: 8px;
       background: #111827;
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
       z-index: 20;
+      border: 1px solid #334155;
     }
 
     .dropdown-item {
@@ -83,7 +81,7 @@
       border-bottom: none;
     }
 
-    .dropdown-item:hover {
+    .dropdown-item:active {
       background: #1f2937;
     }
 
@@ -101,6 +99,7 @@
 <body>
   <div class="card">
     <h1>Steam Market Tracker</h1>
+
     <div class="muted">
       Start typing something close, like <b>bla</b>, <b>lightning</b>, or <b>fire serp</b>.
     </div>
@@ -111,6 +110,9 @@
         type="text"
         placeholder="Type a skin name..."
         autocomplete="off"
+        autocorrect="off"
+        autocapitalize="none"
+        spellcheck="false"
       />
       <div id="dropdown" class="dropdown" style="display:none;"></div>
     </div>
@@ -127,12 +129,16 @@
     const summary = document.getElementById("summary");
 
     function normalize(text) {
-      return text.toLowerCase().replace(/[|()-]/g, " ").replace(/\s+/g, " ").trim();
+      return text
+        .toLowerCase()
+        .replace(/[|()-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function getMatches(query) {
       const q = normalize(query);
-      if (!q) return [];
+      if (!q || q.length < 2) return [];
 
       return SKINS.filter(item => normalize(item).includes(q)).slice(0, 8);
     }
@@ -145,28 +151,27 @@
       }
 
       dropdown.innerHTML = matches.map(item => `
-        <div class="dropdown-item" onclick="selectSkin(${JSON.stringify(item)})">
-          ${item}
-        </div>
+        <div class="dropdown-item" data-item="${item.replace(/"/g, '&quot;')}">${item}</div>
       `).join("");
 
       dropdown.style.display = "block";
     }
 
-    function selectSkin(item) {
+    dropdown.addEventListener("click", (e) => {
+      const row = e.target.closest(".dropdown-item");
+      if (!row) return;
+      const item = row.getAttribute("data-item");
       input.value = item;
       dropdown.style.display = "none";
       dropdown.innerHTML = "";
-    }
+    });
 
     input.addEventListener("input", () => {
       renderDropdown(getMatches(input.value));
     });
 
-    document.addEventListener("click", (e) => {
-      if (!dropdown.contains(e.target) && e.target !== input) {
-        dropdown.style.display = "none";
-      }
+    input.addEventListener("focus", () => {
+      renderDropdown(getMatches(input.value));
     });
 
     async function searchSteamPrice() {
@@ -178,6 +183,7 @@
       }
 
       summary.textContent = "Loading...";
+      dropdown.style.display = "none";
 
       const params = new URLSearchParams({
         market_hash_name: marketHashName,
