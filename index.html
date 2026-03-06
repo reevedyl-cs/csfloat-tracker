@@ -127,8 +127,7 @@
       line-height: 1.4;
     }
 
-    .pump-wrap,
-    .scanner-wrap {
+    .pump-wrap {
       margin-top: 20px;
       background: #0b132b;
       border-radius: 14px;
@@ -378,8 +377,8 @@
 
         const data = await res.json();
 
-        if (!res.ok || !Array.isArray(data.skins)) {
-          throw new Error(data.error || "Could not load skins");
+        if (!res.ok || !data || !Array.isArray(data.skins)) {
+          throw new Error(data?.error || "Could not load skins");
         }
 
         SKINS = data.skins;
@@ -420,13 +419,7 @@
 
       for (const token of qTokens) {
         if (!itemNorm.includes(token)) return 0;
-
-        if (itemNorm.startsWith(token)) {
-          score += 60;
-        } else {
-          score += 25;
-        }
-
+        score += itemNorm.startsWith(token) ? 60 : 25;
         if (token.length >= 4) score += 10;
       }
 
@@ -616,7 +609,31 @@
         headers: { Accept: "application/json" }
       });
 
-      return await res.json();
+      let data = null;
+
+      try {
+        data = await res.json();
+      } catch (err) {
+        return {
+          success: false,
+          lowest_price: null,
+          median_price: null,
+          volume: null,
+          error: "Steam returned invalid JSON"
+        };
+      }
+
+      if (!data || typeof data !== "object") {
+        return {
+          success: false,
+          lowest_price: null,
+          median_price: null,
+          volume: null,
+          error: "Steam returned no market data"
+        };
+      }
+
+      return data;
     }
 
     async function searchSteamPrice(name) {
@@ -644,9 +661,9 @@ Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
 Volume: ${data.volume || "N/A"}`;
 
-        const lowest = parseMoney(data.lowest_price);
-        const median = parseMoney(data.median_price);
-        const volume = parseVolume(data.volume);
+        const lowest = parseMoney(data?.lowest_price);
+        const median = parseMoney(data?.median_price);
+        const volume = parseVolume(data?.volume);
 
         const result = buildPumpScore(lowest, median, volume);
         renderPumpScore(result);
@@ -708,21 +725,20 @@ ${skin}`;
         try {
           const data = await fetchSteamPrice(skin);
 
-          const lowest = parseMoney(data.lowest_price);
-          const median = parseMoney(data.median_price);
-          const volume = parseVolume(data.volume);
-
+          const lowest = parseMoney(data?.lowest_price);
+          const median = parseMoney(data?.median_price);
+          const volume = parseVolume(data?.volume);
           const pump = buildPumpScore(lowest, median, volume);
 
           results.push({
             name: skin,
-            lowest: data.lowest_price || "N/A",
-            median: data.median_price || "N/A",
-            volume: data.volume || "N/A",
-            score: pump.score,
-            rating: pump.rating,
-            tagClass: pump.tagClass,
-            sub: pump.sub
+            lowest: data?.lowest_price || "N/A",
+            median: data?.median_price || "N/A",
+            volume: data?.volume || "N/A",
+            score: data?.error ? 0 : pump.score,
+            rating: data?.error ? "No Market Data" : pump.rating,
+            tagClass: data?.error ? "tag-low" : pump.tagClass,
+            sub: data?.error ? data.error : pump.sub
           });
         } catch (err) {
           results.push({
@@ -752,7 +768,7 @@ Volume: ${item.volume}</div>
           </div>
         `).join("");
 
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 900));
       }
 
       scannerStatus.textContent =
