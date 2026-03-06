@@ -110,9 +110,18 @@
       padding: 12px;
     }
 
+    #historyStatus {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     canvas {
       width: 100% !important;
       height: 320px !important;
+      display: block;
     }
   </style>
 </head>
@@ -142,6 +151,7 @@
     <div id="summary" class="summary">No search yet.</div>
 
     <div class="chart-wrap">
+      <div id="historyStatus">No chart yet.</div>
       <canvas id="priceChart"></canvas>
     </div>
   </div>
@@ -151,6 +161,7 @@
     const input = document.getElementById("marketHashName");
     const dropdown = document.getElementById("dropdown");
     const summary = document.getElementById("summary");
+    const historyStatus = document.getElementById("historyStatus");
 
     let chart = null;
     let currentMatches = [];
@@ -279,6 +290,7 @@
 
     async function searchSteamPrice(name) {
       summary.textContent = "Loading...";
+      historyStatus.textContent = "Loading chart...";
 
       const params = new URLSearchParams({
         market_hash_name: name,
@@ -302,7 +314,23 @@ Volume: ${data.volume || "N/A"}`;
         await loadHistory(name);
       } catch (err) {
         summary.textContent = `Error: ${err.message}`;
+        historyStatus.textContent = "Chart failed to load.";
       }
+    }
+
+    function parseSteamPrice(value) {
+      if (typeof value === "number") return value;
+      if (typeof value !== "string") return NaN;
+
+      let cleaned = value.replace(/[^0-9.,-]/g, "");
+
+      if (cleaned.includes(",") && cleaned.includes(".")) {
+        cleaned = cleaned.replace(/,/g, "");
+      } else if (cleaned.includes(",") && !cleaned.includes(".")) {
+        cleaned = cleaned.replace(",", ".");
+      }
+
+      return parseFloat(cleaned);
     }
 
     async function loadHistory(name) {
@@ -310,7 +338,8 @@ Volume: ${data.volume || "N/A"}`;
         const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`);
         const data = await res.json();
 
-        if (!data.prices || !Array.isArray(data.prices) || !data.prices.length) {
+        if (!data || !Array.isArray(data.prices) || !data.prices.length) {
+          historyStatus.textContent = "No price history returned for this item.";
           if (chart) {
             chart.destroy();
             chart = null;
@@ -318,8 +347,27 @@ Volume: ${data.volume || "N/A"}`;
           return;
         }
 
-        const labels = data.prices.map(p => p[0]);
-        const prices = data.prices.map(p => parseFloat(p[1]));
+        const rawLabels = data.prices.map(p => p[0]);
+        const rawPrices = data.prices.map(p => parseSteamPrice(p[1]));
+
+        const filtered = rawLabels.map((label, index) => ({
+          label,
+          price: rawPrices[index]
+        })).filter(x => Number.isFinite(x.price));
+
+        if (!filtered.length) {
+          historyStatus.textContent = "Price history came back, but the prices could not be parsed.";
+          if (chart) {
+            chart.destroy();
+            chart = null;
+          }
+          return;
+        }
+
+        const labels = filtered.map(x => x.label);
+        const prices = filtered.map(x => x.price);
+
+        historyStatus.textContent = `History points loaded: ${prices.length}`;
 
         if (chart) {
           chart.destroy();
@@ -354,7 +402,11 @@ Volume: ${data.volume || "N/A"}`;
           }
         });
       } catch (err) {
-        console.log("History error", err);
+        historyStatus.textContent = `History error: ${err.message}`;
+        if (chart) {
+          chart.destroy();
+          chart = null;
+        }
       }
     }
 
