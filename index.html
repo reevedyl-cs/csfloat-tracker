@@ -46,6 +46,13 @@
       margin-bottom: 12px;
     }
 
+    .button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
     input,
     button {
       border: none;
@@ -79,6 +86,7 @@
 
     .secondary-button {
       background: #334155;
+      margin-top: 0;
     }
 
     .dropdown {
@@ -262,6 +270,12 @@
       background: rgba(239, 68, 68, 0.12);
       border: 1px solid rgba(239, 68, 68, 0.45);
     }
+
+    @media (max-width: 700px) {
+      .button-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -304,12 +318,15 @@
   </div>
 
   <div class="card">
-    <h2>Pistol Scanner</h2>
+    <h2>Category Scanners</h2>
     <div class="muted">
-      This scans <b>all Factory New pistols</b> in the loaded skin database, excluding <b>StatTrak</b> and <b>Souvenir</b>, then ranks every result by score.
+      Scans live Steam data for the selected category using <b>Factory New only</b>, excluding <b>StatTrak</b> and <b>Souvenir</b>.
     </div>
 
-    <button id="scanPistolsButton" class="secondary-button" onclick="scanPistols()" disabled>Scan Pistols</button>
+    <div class="button-grid">
+      <button id="scanPistolsButton" class="secondary-button" onclick="scanCategory('pistols')" disabled>Scan Pistols</button>
+      <button id="scanSnipersButton" class="secondary-button" onclick="scanCategory('snipers')" disabled>Scan Snipers</button>
+    </div>
 
     <div id="scannerStatus" class="scanner-status">Scanner has not been run yet.</div>
     <div id="scannerList" class="scanner-list"></div>
@@ -323,6 +340,7 @@
     const datasetStatus = document.getElementById("datasetStatus");
     const searchButton = document.getElementById("searchButton");
     const scanPistolsButton = document.getElementById("scanPistolsButton");
+    const scanSnipersButton = document.getElementById("scanSnipersButton");
     const scannerStatus = document.getElementById("scannerStatus");
     const scannerList = document.getElementById("scannerList");
 
@@ -331,18 +349,26 @@
     let currentMatches = [];
     let activeIndex = -1;
 
-    const PISTOL_PREFIXES = [
-      "Glock-18 |",
-      "USP-S |",
-      "P2000 |",
-      "P250 |",
-      "Five-SeveN |",
-      "CZ75-Auto |",
-      "Tec-9 |",
-      "Dual Berettas |",
-      "Desert Eagle |",
-      "R8 Revolver |"
-    ];
+    const CATEGORY_PREFIXES = {
+      pistols: [
+        "Glock-18 |",
+        "USP-S |",
+        "P2000 |",
+        "P250 |",
+        "Five-SeveN |",
+        "CZ75-Auto |",
+        "Tec-9 |",
+        "Dual Berettas |",
+        "Desert Eagle |",
+        "R8 Revolver |"
+      ],
+      snipers: [
+        "AWP |",
+        "SSG 08 |",
+        "SCAR-20 |",
+        "G3SG1 |"
+      ]
+    };
 
     async function loadSkinDatabase() {
       try {
@@ -361,6 +387,7 @@
         datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
         searchButton.disabled = false;
         scanPistolsButton.disabled = false;
+        scanSnipersButton.disabled = false;
       } catch (err) {
         datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
       }
@@ -628,44 +655,52 @@ Volume: ${data.volume || "N/A"}`;
       }
     }
 
-    function getFactoryNewPistols() {
-      if (!SKINS_READY) return [];
+    function getFactoryNewCategory(categoryKey) {
+      if (!SKINS_READY || !CATEGORY_PREFIXES[categoryKey]) return [];
 
       return SKINS.filter(name => {
-        const isPistol = PISTOL_PREFIXES.some(prefix => name.startsWith(prefix));
+        const isCategory = CATEGORY_PREFIXES[categoryKey].some(prefix => name.startsWith(prefix));
         const isFactoryNew = name.endsWith("(Factory New)");
         const isStatTrak = name.includes("StatTrak");
         const isSouvenir = name.includes("Souvenir");
 
-        return isPistol && isFactoryNew && !isStatTrak && !isSouvenir;
+        return isCategory && isFactoryNew && !isStatTrak && !isSouvenir;
       });
     }
 
-    async function scanPistols() {
+    function categoryLabel(categoryKey) {
+      if (categoryKey === "pistols") return "Factory New Pistols";
+      if (categoryKey === "snipers") return "Factory New Snipers";
+      return "Factory New Category";
+    }
+
+    async function scanCategory(categoryKey) {
       if (!SKINS_READY) {
         scannerStatus.textContent = "Skin database is still loading.";
         return;
       }
 
-      const pistolPool = getFactoryNewPistols();
+      const pool = getFactoryNewCategory(categoryKey);
+      const label = categoryLabel(categoryKey);
 
-      if (!pistolPool.length) {
-        scannerStatus.textContent = "No Factory New pistols were found in the loaded database.";
+      if (!pool.length) {
+        scannerStatus.textContent = `No skins found for ${label}.`;
         return;
       }
 
       scanPistolsButton.disabled = true;
+      scanSnipersButton.disabled = true;
       scannerList.innerHTML = "";
-      scannerStatus.textContent = `Preparing to scan ${pistolPool.length} Factory New pistols...`;
+      scannerStatus.textContent = `Preparing to scan ${pool.length} ${label}...`;
 
       const results = [];
 
-      for (let i = 0; i < pistolPool.length; i++) {
-        const skin = pistolPool[i];
+      for (let i = 0; i < pool.length; i++) {
+        const skin = pool[i];
 
         scannerStatus.textContent =
-`Scanning Factory New Pistols
-${i + 1} / ${pistolPool.length}
+`Scanning ${label}
+${i + 1} / ${pool.length}
 
 Current:
 ${skin}`;
@@ -721,11 +756,12 @@ Volume: ${item.volume}</div>
       }
 
       scannerStatus.textContent =
-`Factory New pistol scan complete.
-Scanned: ${pistolPool.length}
+`${label} scan complete.
+Scanned: ${pool.length}
 Showing all results sorted by score.`;
 
       scanPistolsButton.disabled = false;
+      scanSnipersButton.disabled = false;
     }
 
     function manualSearch() {
