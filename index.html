@@ -7,85 +7,137 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #111827;
-      color: #f9fafb;
+      background: #0f172a;
+      color: #f8fafc;
       margin: 0;
-      padding: 20px;
+      padding: 24px;
     }
+
     .card {
-      max-width: 900px;
+      max-width: 920px;
       margin: 0 auto;
-      background: #1f2937;
-      border-radius: 14px;
-      padding: 20px;
+      background: #1e293b;
+      border-radius: 18px;
+      padding: 24px;
+      box-sizing: border-box;
     }
+
     h1 {
-      margin-top: 0;
+      margin: 0 0 12px 0;
+      font-size: 48px;
+      line-height: 1.05;
     }
+
+    .muted {
+      color: #94a3b8;
+      font-size: 15px;
+      line-height: 1.4;
+      margin-bottom: 18px;
+    }
+
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr auto;
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 12px;
+      margin-bottom: 14px;
     }
+
     input, button {
-      padding: 12px;
-      border-radius: 10px;
       border: none;
-      font-size: 16px;
+      border-radius: 14px;
+      padding: 16px;
+      font-size: 18px;
+      box-sizing: border-box;
     }
+
     input {
-      background: #374151;
+      background: #475569;
       color: white;
+      width: 100%;
     }
+
+    input::placeholder {
+      color: #cbd5e1;
+    }
+
     button {
       background: #2563eb;
       color: white;
       cursor: pointer;
+      min-width: 110px;
     }
+
     button:hover {
       background: #1d4ed8;
     }
-    .muted {
-      color: #9ca3af;
-      font-size: 14px;
-    }
-    .result {
-      margin-top: 20px;
-      background: #111827;
-      padding: 16px;
-      border-radius: 12px;
-      overflow-x: auto;
+
+    .summary {
+      margin-top: 16px;
+      background: #0b132b;
+      border-radius: 14px;
+      padding: 18px;
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: 17px;
     }
+
+    .listings {
+      margin-top: 18px;
+    }
+
     .listing {
-      border-top: 1px solid #374151;
-      padding: 12px 0;
+      background: #111827;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+      word-break: break-word;
     }
-    a {
+
+    .listing strong {
+      font-size: 18px;
+    }
+
+    .label {
       color: #93c5fd;
+    }
+
+    @media (max-width: 760px) {
+      h1 {
+        font-size: 34px;
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>CSFloat Tracker</h1>
-    <p class="muted">Use def_index, paint_index, and optional max_float to check real CSFloat listings.</p>
+
+    <div class="muted">
+      Use def_index, paint_index, and optional max_float to check real CSFloat listings.
+    </div>
 
     <div class="row">
-      <input id="defIndex" type="number" placeholder="def_index (example: 9)" value="9" />
-      <input id="paintIndex" type="number" placeholder="paint_index (example: 51)" value="51" />
-      <input id="maxFloat" type="number" step="0.0001" placeholder="max_float (example: 0.07)" value="0.07" />
+      <input id="defIndex" type="number" placeholder="def_index" value="9" />
+      <input id="paintIndex" type="number" placeholder="paint_index" value="51" />
+      <input id="maxFloat" type="number" step="0.0001" placeholder="max_float" value="0.07" />
       <button onclick="searchListings()">Search</button>
     </div>
 
-    <p class="muted">
+    <div class="muted">
       Example: AWP | Lightning Strike FN = def_index 9, paint_index 51, max_float 0.07
-    </p>
+    </div>
 
-    <div id="summary" class="result">No search yet.</div>
-    <div id="listings"></div>
+    <div id="summary" class="summary">No search yet.</div>
+    <div id="listings" class="listings"></div>
   </div>
 
   <script>
@@ -97,21 +149,25 @@
       const summary = document.getElementById("summary");
       const listingsDiv = document.getElementById("listings");
 
+      if (!defIndex || !paintIndex) {
+        summary.textContent = "Please enter both def_index and paint_index.";
+        listingsDiv.innerHTML = "";
+        return;
+      }
+
       summary.textContent = "Loading...";
       listingsDiv.innerHTML = "";
 
       const params = new URLSearchParams({
         def_index: defIndex,
-        paint_index: paintIndex,
-        limit: "10",
-        sort_by: "lowest_price"
+        paint_index: paintIndex
       });
 
       if (maxFloat !== "") {
         params.set("max_float", maxFloat);
       }
 
-      const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
+      const url = `/api/search?${params.toString()}`;
 
       try {
         const res = await fetch(url, {
@@ -126,16 +182,25 @@
         try {
           data = JSON.parse(text);
         } catch {
-          summary.textContent = `CSFloat did not return JSON.\nStatus: ${res.status}\n\nPreview:\n${text.slice(0, 500)}`;
+          summary.textContent =
+`Server did not return JSON.
+Status: ${res.status}
+
+Preview:
+${text.slice(0, 500)}`;
           return;
         }
 
-        if (!Array.isArray(data.data)) {
-          summary.textContent = `Unexpected response:\n${JSON.stringify(data, null, 2)}`;
+        const listings = Array.isArray(data.data) ? data.data : [];
+
+        if (!res.ok) {
+          summary.textContent =
+`Request failed.
+Status: ${res.status}
+
+${JSON.stringify(data, null, 2)}`;
           return;
         }
-
-        const listings = data.data;
 
         if (listings.length === 0) {
           summary.textContent = "No listings found.";
@@ -143,6 +208,7 @@
         }
 
         const lowest = listings[0];
+
         summary.textContent =
 `Status: ${res.status}
 Count loaded: ${listings.length}
@@ -152,20 +218,21 @@ Lowest float: ${lowest.item.float_value}
 Listing ID: ${lowest.id}`;
 
         listingsDiv.innerHTML = listings.map((x, i) => {
-          const inspect = x.item.inspect_link || "N/A";
+          const sellerName = x.seller && x.seller.username ? x.seller.username : "Private/Hidden";
+          const inspect = x.item && x.item.inspect_link ? x.item.inspect_link : "N/A";
+
           return `
             <div class="listing">
               <strong>#${i + 1} - $${(x.price / 100).toFixed(2)}</strong><br>
-              Item: ${x.item.market_hash_name}<br>
-              Float: ${x.item.float_value}<br>
-              Paint Seed: ${x.item.paint_seed}<br>
-              Listing ID: ${x.id}<br>
-              Seller: ${x.seller?.username || "Private/Hidden"}<br>
-              ${inspect !== "N/A" ? `Inspect: <span class="muted">${inspect}</span>` : ""}
+              <span class="label">Item:</span> ${x.item.market_hash_name}<br>
+              <span class="label">Float:</span> ${x.item.float_value}<br>
+              <span class="label">Paint Seed:</span> ${x.item.paint_seed}<br>
+              <span class="label">Listing ID:</span> ${x.id}<br>
+              <span class="label">Seller:</span> ${sellerName}<br>
+              <span class="label">Inspect:</span> ${inspect}
             </div>
           `;
         }).join("");
-
       } catch (err) {
         summary.textContent = `Error: ${err.message}`;
       }
