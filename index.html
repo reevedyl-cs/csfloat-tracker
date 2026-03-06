@@ -42,7 +42,7 @@
       margin-bottom: 14px;
     }
 
-    input, button, select {
+    input, button {
       border: none;
       border-radius: 14px;
       padding: 16px;
@@ -50,7 +50,7 @@
       box-sizing: border-box;
     }
 
-    input, select {
+    input {
       background: #475569;
       color: white;
       width: 100%;
@@ -81,12 +81,52 @@
       font-size: 17px;
     }
 
+    .suggestions {
+      margin-top: 16px;
+    }
+
+    .suggestion-title {
+      color: #cbd5e1;
+      margin-bottom: 10px;
+      font-size: 15px;
+    }
+
+    .suggestion-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin-bottom: 10px;
+      background: #334155;
+      color: white;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 16px;
+    }
+
+    .quick-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      margin-bottom: 18px;
+    }
+
+    .quick-buttons button {
+      min-width: 0;
+      background: #334155;
+    }
+
+    .quick-buttons button:hover {
+      background: #475569;
+    }
+
     @media (max-width: 760px) {
       h1 {
         font-size: 34px;
       }
 
-      .row {
+      .row,
+      .quick-buttons {
         grid-template-columns: 1fr;
       }
 
@@ -101,66 +141,196 @@
     <h1>Steam Market Tracker</h1>
 
     <div class="muted">
-      Search any CS2 skin by exact Steam market name.
+      Search any CS2 skin by simple name or exact Steam market name.
     </div>
 
     <div class="row">
       <input
         id="marketHashName"
         type="text"
-        placeholder="Example: AWP | Lightning Strike (Factory New)"
-        value="AWP | Lightning Strike (Factory New)"
+        placeholder="Example: deagle blaze, lightning strike fn, fire serpent ft"
+        value="deagle blaze"
       />
-      <button onclick="searchSteamPrice()">Search</button>
+      <button onclick="handleSearch()">Search</button>
     </div>
 
     <div class="muted">
-      Example names:
-      <br />AWP | Lightning Strike (Factory New)
-      <br />AK-47 | Redline (Field-Tested)
-      <br />M4A1-S | Blue Phosphor (Factory New)
+      Simple examples:
+      <br />deagle blaze
+      <br />lightning strike fn
+      <br />fire serpent ft
+      <br />blue phosphor fn
+    </div>
+
+    <div class="quick-buttons">
+      <button onclick="quickSearch('deagle blaze')">Deagle Blaze</button>
+      <button onclick="quickSearch('lightning strike fn')">Lightning Strike FN</button>
+      <button onclick="quickSearch('fire serpent ft')">Fire Serpent FT</button>
+      <button onclick="quickSearch('blue phosphor fn')">Blue Phosphor FN</button>
     </div>
 
     <div id="summary" class="summary">No search yet.</div>
+    <div id="suggestions" class="suggestions"></div>
   </div>
 
   <script>
-    async function searchSteamPrice() {
-      const marketHashName = document.getElementById("marketHashName").value.trim()
-      const summary = document.getElementById("summary")
+    const exactItems = [
+      "AWP | Lightning Strike (Factory New)",
+      "AWP | Lightning Strike (Minimal Wear)",
+      "AWP | Lightning Strike (Field-Tested)",
+      "Desert Eagle | Blaze (Factory New)",
+      "Desert Eagle | Blaze (Minimal Wear)",
+      "AK-47 | Fire Serpent (Factory New)",
+      "AK-47 | Fire Serpent (Minimal Wear)",
+      "AK-47 | Fire Serpent (Field-Tested)",
+      "AK-47 | Fire Serpent (Well-Worn)",
+      "AK-47 | Fire Serpent (Battle-Scarred)",
+      "M4A1-S | Blue Phosphor (Factory New)",
+      "M4A1-S | Blue Phosphor (Minimal Wear)",
+      "Glock-18 | Fade (Factory New)",
+      "Glock-18 | Fade (Minimal Wear)",
+      "AWP | Dragon Lore (Factory New)",
+      "AWP | Dragon Lore (Minimal Wear)",
+      "AWP | Dragon Lore (Field-Tested)",
+      "AWP | Dragon Lore (Well-Worn)",
+      "AWP | Dragon Lore (Battle-Scarred)",
+      "AK-47 | Redline (Field-Tested)",
+      "AK-47 | Redline (Minimal Wear)",
+      "AK-47 | Redline (Well-Worn)",
+      "M4A4 | Howl (Factory New)",
+      "M4A4 | Howl (Minimal Wear)",
+      "M4A4 | Howl (Field-Tested)",
+      "USP-S | Kill Confirmed (Factory New)",
+      "USP-S | Kill Confirmed (Minimal Wear)",
+      "USP-S | Kill Confirmed (Field-Tested)"
+    ];
 
-      if (!marketHashName) {
-        summary.textContent = "Please enter a market_hash_name."
-        return
+    const aliases = {
+      "deagle blaze": "Desert Eagle | Blaze (Factory New)",
+      "blaze fn": "Desert Eagle | Blaze (Factory New)",
+      "desert eagle blaze": "Desert Eagle | Blaze (Factory New)",
+      "desert eagle blaze fn": "Desert Eagle | Blaze (Factory New)",
+
+      "lightning strike": "AWP | Lightning Strike (Factory New)",
+      "awp lightning strike": "AWP | Lightning Strike (Factory New)",
+      "lightning strike fn": "AWP | Lightning Strike (Factory New)",
+      "awp lightning strike fn": "AWP | Lightning Strike (Factory New)",
+      "lightning strike mw": "AWP | Lightning Strike (Minimal Wear)",
+      "lightning strike ft": "AWP | Lightning Strike (Field-Tested)",
+
+      "fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serpent ft": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serpent fn": "AK-47 | Fire Serpent (Factory New)",
+      "fire serpent mw": "AK-47 | Fire Serpent (Minimal Wear)",
+      "ak fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
+
+      "blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
+      "blue phosphor fn": "M4A1-S | Blue Phosphor (Factory New)",
+      "m4 blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
+
+      "glock fade": "Glock-18 | Fade (Factory New)",
+      "glock fade fn": "Glock-18 | Fade (Factory New)",
+
+      "dragon lore": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore ft": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore fn": "AWP | Dragon Lore (Factory New)",
+      "dragon lore mw": "AWP | Dragon Lore (Minimal Wear)",
+
+      "ak redline": "AK-47 | Redline (Field-Tested)",
+      "ak redline ft": "AK-47 | Redline (Field-Tested)",
+
+      "howl": "M4A4 | Howl (Field-Tested)",
+      "howl fn": "M4A4 | Howl (Factory New)",
+
+      "kill confirmed": "USP-S | Kill Confirmed (Field-Tested)",
+      "kill confirmed fn": "USP-S | Kill Confirmed (Factory New)"
+    };
+
+    function normalize(text) {
+      return text
+        .toLowerCase()
+        .replace(/[|()-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function scoreMatch(query, item) {
+      const q = normalize(query);
+      const i = normalize(item);
+
+      if (i === q) return 1000;
+      if (i.includes(q)) return 500 + q.length;
+
+      const words = q.split(" ").filter(Boolean);
+      let score = 0;
+
+      for (const word of words) {
+        if (i.includes(word)) score += 10;
       }
 
-      summary.textContent = "Loading..."
+      return score;
+    }
+
+    function getSuggestions(query) {
+      const scored = exactItems
+        .map(item => ({ item, score: scoreMatch(query, item) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+
+      return scored.map(x => x.item);
+    }
+
+    function renderSuggestions(items) {
+      const suggestionsDiv = document.getElementById("suggestions");
+
+      if (!items.length) {
+        suggestionsDiv.innerHTML = "";
+        return;
+      }
+
+      suggestionsDiv.innerHTML = `
+        <div class="suggestion-title">Tap a suggestion:</div>
+        ${items.map(item => `
+          <button class="suggestion-btn" onclick="searchExact(${JSON.stringify(item)})">
+            ${item}
+          </button>
+        `).join("")}
+      `;
+    }
+
+    async function searchSteamPrice(exactName) {
+      const summary = document.getElementById("summary");
+      const suggestionsDiv = document.getElementById("suggestions");
+
+      summary.textContent = "Loading...";
+      suggestionsDiv.innerHTML = "";
 
       const params = new URLSearchParams({
-        market_hash_name: marketHashName,
+        market_hash_name: exactName,
         currency: "1"
-      })
+      });
 
       try {
         const res = await fetch(`/api/steam-price?${params.toString()}`, {
           headers: {
             Accept: "application/json"
           }
-        })
+        });
 
-        const text = await res.text()
+        const text = await res.text();
 
-        let data
+        let data;
         try {
-          data = JSON.parse(text)
+          data = JSON.parse(text);
         } catch {
           summary.textContent =
 `Server did not return JSON.
 Status: ${res.status}
 
 Preview:
-${text.slice(0, 500)}`
-          return
+${text.slice(0, 500)}`;
+          return;
         }
 
         if (!res.ok) {
@@ -168,27 +338,75 @@ ${text.slice(0, 500)}`
 `Request failed.
 Status: ${res.status}
 
-${JSON.stringify(data, null, 2)}`
-          return
+${JSON.stringify(data, null, 2)}`;
+          return;
         }
 
         if (!data.success) {
           summary.textContent =
 `Steam returned success: false
 
-${JSON.stringify(data, null, 2)}`
-          return
+${JSON.stringify(data, null, 2)}`;
+          return;
         }
 
         summary.textContent =
-`Item: ${marketHashName}
+`Item: ${exactName}
 Success: ${data.success}
 Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
-Volume: ${data.volume || "N/A"}`
+Volume: ${data.volume || "N/A"}`;
       } catch (err) {
-        summary.textContent = `Error: ${err.message}`
+        summary.textContent = `Error: ${err.message}`;
       }
+    }
+
+    function searchExact(exactName) {
+      document.getElementById("marketHashName").value = exactName;
+      searchSteamPrice(exactName);
+    }
+
+    function handleSearch() {
+      const input = document.getElementById("marketHashName").value.trim();
+      const summary = document.getElementById("summary");
+
+      if (!input) {
+        summary.textContent = "Please enter a skin name.";
+        return;
+      }
+
+      const normalized = normalize(input);
+
+      if (aliases[normalized]) {
+        searchSteamPrice(aliases[normalized]);
+        return;
+      }
+
+      if (exactItems.includes(input)) {
+        searchSteamPrice(input);
+        return;
+      }
+
+      const suggestions = getSuggestions(input);
+
+      if (suggestions.length === 1) {
+        searchSteamPrice(suggestions[0]);
+        return;
+      }
+
+      if (suggestions.length > 1) {
+        summary.textContent = `No exact alias match found for: ${input}`;
+        renderSuggestions(suggestions);
+        return;
+      }
+
+      summary.textContent = `No match found for: ${input}`;
+      renderSuggestions([]);
+    }
+
+    function quickSearch(term) {
+      document.getElementById("marketHashName").value = term;
+      handleSearch();
     }
   </script>
 </body>
