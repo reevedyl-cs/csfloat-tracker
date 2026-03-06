@@ -7,7 +7,7 @@ app.use(express.static("."));
 
 app.get("/api/skins", async (req, res) => {
   try {
-    const url = "https://bymykel.github.io/CSGO-API/api/en/skins_not_grouped.json";
+    const url = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json";
 
     const response = await fetch(url, {
       headers: {
@@ -27,7 +27,7 @@ app.get("/api/skins", async (req, res) => {
     const names = data
       .map(item => item.market_hash_name)
       .filter(Boolean)
-      .filter(name => !name.includes("StatTrak™"))
+      .filter(name => !name.includes("StatTrak"))
       .filter(name => !name.includes("Souvenir"));
 
     const uniqueNames = [...new Set(names)].sort((a, b) => a.localeCompare(b));
