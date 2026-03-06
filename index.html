@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Market Tracker</title>
+  <title>Steam Market Scanner</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -15,12 +15,11 @@
 
     .card {
       max-width: 920px;
-      margin: 0 auto;
+      margin: 0 auto 20px auto;
       background: #1e293b;
       border-radius: 18px;
       padding: 24px;
       box-sizing: border-box;
-      margin-bottom: 20px;
     }
 
     h1 {
@@ -120,14 +119,15 @@
       line-height: 1.4;
     }
 
-    .pump-wrap {
+    .pump-wrap,
+    .scanner-wrap {
       margin-top: 20px;
       background: #0b132b;
       border-radius: 14px;
       padding: 16px;
     }
 
-    .pump-title {
+    .section-title {
       font-size: 18px;
       font-weight: 700;
       margin-bottom: 12px;
@@ -193,47 +193,49 @@
       line-height: 1.45;
     }
 
-    .radar-status {
+    .scanner-status {
       color: #cbd5e1;
       margin-bottom: 14px;
       line-height: 1.45;
       white-space: pre-wrap;
+      word-break: break-word;
     }
 
-    .radar-list {
+    .scanner-list {
       display: grid;
       gap: 12px;
     }
 
-    .radar-item {
-      background: #0b132b;
+    .scanner-item {
+      background: #111827;
       border-radius: 14px;
       padding: 16px;
       border: 1px solid #1f2937;
     }
 
-    .radar-rank {
+    .scanner-rank {
       font-size: 13px;
       color: #94a3b8;
       margin-bottom: 6px;
     }
 
-    .radar-name {
+    .scanner-name {
       font-size: 18px;
       font-weight: 700;
       margin-bottom: 8px;
       line-height: 1.35;
     }
 
-    .radar-meta {
+    .scanner-meta {
       color: #cbd5e1;
       line-height: 1.45;
       font-size: 15px;
       margin-bottom: 10px;
       white-space: pre-wrap;
+      word-break: break-word;
     }
 
-    .radar-tag {
+    .scanner-tag {
       display: inline-block;
       padding: 8px 12px;
       border-radius: 999px;
@@ -264,7 +266,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Steam Market Tracker</h1>
+    <h1>Steam Market Scanner</h1>
 
     <div id="datasetStatus" class="muted">
       Loading full skin database...
@@ -288,29 +290,29 @@
     <div id="summary" class="summary">No search yet.</div>
 
     <div class="pump-wrap">
-      <div class="pump-title">Potential Price Pump</div>
+      <div class="section-title">Potential Price Pump</div>
       <div id="pumpBox" class="pump-box pump-watch">
         <div class="pump-score">-- / 100</div>
         <div class="pump-rating">No item analyzed yet</div>
-        <div class="pump-sub">Search an item to generate a pump score.</div>
+        <div class="pump-sub">Search an item to generate a score.</div>
         <ul class="pump-list">
           <li>The score uses Steam lowest price, median price, and volume.</li>
-          <li>It is a signal, not a guarantee.</li>
+          <li>This is a live signal, not a guarantee.</li>
         </ul>
       </div>
     </div>
   </div>
 
   <div class="card">
-    <h2>Pump Radar</h2>
+    <h2>Pistol Scanner</h2>
     <div class="muted">
-      This scans a curated watchlist of pumpable skins and ranks the strongest current signals.
+      This scans <b>all Factory New pistols</b> in the loaded skin database, excluding <b>StatTrak</b> and <b>Souvenir</b>, then ranks every result by score.
     </div>
 
-    <button id="radarButton" class="secondary-button" onclick="runPumpRadar()" disabled>Run Pump Radar</button>
+    <button id="scanPistolsButton" class="secondary-button" onclick="scanPistols()" disabled>Scan Pistols</button>
 
-    <div id="radarStatus" class="radar-status">Radar has not been run yet.</div>
-    <div id="radarList" class="radar-list"></div>
+    <div id="scannerStatus" class="scanner-status">Scanner has not been run yet.</div>
+    <div id="scannerList" class="scanner-list"></div>
   </div>
 
   <script>
@@ -320,41 +322,26 @@
     const pumpBox = document.getElementById("pumpBox");
     const datasetStatus = document.getElementById("datasetStatus");
     const searchButton = document.getElementById("searchButton");
-    const radarButton = document.getElementById("radarButton");
-    const radarStatus = document.getElementById("radarStatus");
-    const radarList = document.getElementById("radarList");
+    const scanPistolsButton = document.getElementById("scanPistolsButton");
+    const scannerStatus = document.getElementById("scannerStatus");
+    const scannerList = document.getElementById("scannerList");
 
     let SKINS = [];
     let SKINS_READY = false;
     let currentMatches = [];
     let activeIndex = -1;
 
-    const PUMP_WATCHLIST = [
-      "AWP | Lightning Strike (Factory New)",
-      "AWP | Lightning Strike (Minimal Wear)",
-      "Desert Eagle | Blaze (Factory New)",
-      "Desert Eagle | Blaze (Minimal Wear)",
-      "M4A1-S | Blue Phosphor (Factory New)",
-      "M4A1-S | Blue Phosphor (Minimal Wear)",
-      "P250 | Franklin (Factory New)",
-      "Glock-18 | Reactor (Factory New)",
-      "Glock-18 | Reactor (Minimal Wear)",
-      "AK-47 | Fire Serpent (Factory New)",
-      "AK-47 | Fire Serpent (Minimal Wear)",
-      "AK-47 | Fire Serpent (Field-Tested)",
-      "AWP | Medusa (Factory New)",
-      "AWP | Medusa (Minimal Wear)",
-      "AWP | Medusa (Field-Tested)",
-      "USP-S | Kill Confirmed (Factory New)",
-      "USP-S | Kill Confirmed (Minimal Wear)",
-      "USP-S | Kill Confirmed (Field-Tested)",
-      "M4A4 | The Coalition (Factory New)",
-      "M4A4 | Daybreak (Factory New)",
-      "M4A1-S | Hot Rod (Factory New)",
-      "Glock-18 | Fade (Factory New)",
-      "P250 | Whiteout (Factory New)",
-      "AUG | Akihabara Accept (Factory New)",
-      "Desert Eagle | Emerald Jörmungandr (Factory New)"
+    const PISTOL_PREFIXES = [
+      "Glock-18 |",
+      "USP-S |",
+      "P2000 |",
+      "P250 |",
+      "Five-SeveN |",
+      "CZ75-Auto |",
+      "Tec-9 |",
+      "Dual Berettas |",
+      "Desert Eagle |",
+      "R8 Revolver |"
     ];
 
     async function loadSkinDatabase() {
@@ -373,7 +360,7 @@
         SKINS_READY = true;
         datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
         searchButton.disabled = false;
-        radarButton.disabled = false;
+        scanPistolsButton.disabled = false;
       } catch (err) {
         datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
       }
@@ -573,8 +560,7 @@
         className,
         tagClass,
         reasons,
-        sub,
-        spread
+        sub
       };
     }
 
@@ -603,8 +589,7 @@
         headers: { Accept: "application/json" }
       });
 
-      const data = await res.json();
-      return data;
+      return await res.json();
     }
 
     async function searchSteamPrice(name) {
@@ -640,33 +625,50 @@ Volume: ${data.volume || "N/A"}`;
         renderPumpScore(result);
       } catch (err) {
         summary.textContent = `Error: ${err.message}`;
-        pumpBox.className = "pump-box pump-watch";
-        pumpBox.innerHTML = `
-          <div class="pump-score">-- / 100</div>
-          <div class="pump-rating">Calculation failed</div>
-          <div class="pump-sub">The Steam request failed.</div>
-          <ul class="pump-list">
-            <li>${err.message}</li>
-          </ul>
-        `;
       }
     }
 
-    async function runPumpRadar() {
+    function getFactoryNewPistols() {
+      if (!SKINS_READY) return [];
+
+      return SKINS.filter(name => {
+        const isPistol = PISTOL_PREFIXES.some(prefix => name.startsWith(prefix));
+        const isFactoryNew = name.endsWith("(Factory New)");
+        const isStatTrak = name.includes("StatTrak");
+        const isSouvenir = name.includes("Souvenir");
+
+        return isPistol && isFactoryNew && !isStatTrak && !isSouvenir;
+      });
+    }
+
+    async function scanPistols() {
       if (!SKINS_READY) {
-        radarStatus.textContent = "Skin database is still loading.";
+        scannerStatus.textContent = "Skin database is still loading.";
         return;
       }
 
-      radarButton.disabled = true;
-      radarList.innerHTML = "";
-      radarStatus.textContent = `Scanning ${PUMP_WATCHLIST.length} watchlist skins...`;
+      const pistolPool = getFactoryNewPistols();
+
+      if (!pistolPool.length) {
+        scannerStatus.textContent = "No Factory New pistols were found in the loaded database.";
+        return;
+      }
+
+      scanPistolsButton.disabled = true;
+      scannerList.innerHTML = "";
+      scannerStatus.textContent = `Preparing to scan ${pistolPool.length} Factory New pistols...`;
 
       const results = [];
 
-      for (let i = 0; i < PUMP_WATCHLIST.length; i++) {
-        const skin = PUMP_WATCHLIST[i];
-        radarStatus.textContent = `Scanning ${i + 1} / ${PUMP_WATCHLIST.length}\n${skin}`;
+      for (let i = 0; i < pistolPool.length; i++) {
+        const skin = pistolPool[i];
+
+        scannerStatus.textContent =
+`Scanning Factory New Pistols
+${i + 1} / ${pistolPool.length}
+
+Current:
+${skin}`;
 
         try {
           const data = await fetchSteamPrice(skin);
@@ -700,27 +702,30 @@ Volume: ${data.volume || "N/A"}`;
           });
         }
 
-        await new Promise(resolve => setTimeout(resolve, 250));
-      }
+        results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
-      results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-
-      radarStatus.textContent = `Pump Radar complete. Top ${Math.min(25, results.length)} results shown.`;
-
-      radarList.innerHTML = results.slice(0, 25).map((item, index) => `
-        <div class="radar-item">
-          <div class="radar-rank">#${index + 1}</div>
-          <div class="radar-name">${item.name}</div>
-          <div class="radar-meta">Score: ${item.score} / 100
+        scannerList.innerHTML = results.map((item, index) => `
+          <div class="scanner-item">
+            <div class="scanner-rank">#${index + 1}</div>
+            <div class="scanner-name">${item.name}</div>
+            <div class="scanner-meta">Score: ${item.score} / 100
 Rating: ${item.rating}
 Lowest: ${item.lowest}
 Median: ${item.median}
 Volume: ${item.volume}</div>
-          <div class="radar-tag ${item.tagClass}">${item.sub}</div>
-        </div>
-      `).join("");
+            <div class="scanner-tag ${item.tagClass}">${item.sub}</div>
+          </div>
+        `).join("");
 
-      radarButton.disabled = false;
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      scannerStatus.textContent =
+`Factory New pistol scan complete.
+Scanned: ${pistolPool.length}
+Showing all results sorted by score.`;
+
+      scanPistolsButton.disabled = false;
     }
 
     function manualSearch() {
