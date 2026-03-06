@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CSFloat Tracker</title>
+  <title>Steam Market Tracker</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -24,7 +24,7 @@
 
     h1 {
       margin: 0 0 12px 0;
-      font-size: 48px;
+      font-size: 44px;
       line-height: 1.05;
     }
 
@@ -37,12 +37,12 @@
 
     .row {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr auto;
+      grid-template-columns: 1fr auto;
       gap: 12px;
       margin-bottom: 14px;
     }
 
-    input, button {
+    input, button, select {
       border: none;
       border-radius: 14px;
       padding: 16px;
@@ -50,7 +50,7 @@
       box-sizing: border-box;
     }
 
-    input {
+    input, select {
       background: #475569;
       color: white;
       width: 100%;
@@ -81,27 +81,6 @@
       font-size: 17px;
     }
 
-    .listings {
-      margin-top: 18px;
-    }
-
-    .listing {
-      background: #111827;
-      border-radius: 12px;
-      padding: 14px;
-      margin-bottom: 12px;
-      line-height: 1.5;
-      word-break: break-word;
-    }
-
-    .listing strong {
-      font-size: 18px;
-    }
-
-    .label {
-      color: #93c5fd;
-    }
-
     @media (max-width: 760px) {
       h1 {
         font-size: 34px;
@@ -119,122 +98,96 @@
 </head>
 <body>
   <div class="card">
-    <h1>CSFloat Tracker</h1>
+    <h1>Steam Market Tracker</h1>
 
     <div class="muted">
-      Use def_index, paint_index, and optional max_float to check real CSFloat listings.
+      Search any CS2 skin by exact Steam market name.
     </div>
 
     <div class="row">
-      <input id="defIndex" type="number" placeholder="def_index" value="9" />
-      <input id="paintIndex" type="number" placeholder="paint_index" value="51" />
-      <input id="maxFloat" type="number" step="0.0001" placeholder="max_float" value="0.07" />
-      <button onclick="searchListings()">Search</button>
+      <input
+        id="marketHashName"
+        type="text"
+        placeholder="Example: AWP | Lightning Strike (Factory New)"
+        value="AWP | Lightning Strike (Factory New)"
+      />
+      <button onclick="searchSteamPrice()">Search</button>
     </div>
 
     <div class="muted">
-      Example: AWP | Lightning Strike FN = def_index 9, paint_index 51, max_float 0.07
+      Example names:
+      <br />AWP | Lightning Strike (Factory New)
+      <br />AK-47 | Redline (Field-Tested)
+      <br />M4A1-S | Blue Phosphor (Factory New)
     </div>
 
     <div id="summary" class="summary">No search yet.</div>
-    <div id="listings" class="listings"></div>
   </div>
 
   <script>
-    async function searchListings() {
-      const defIndex = document.getElementById("defIndex").value.trim();
-      const paintIndex = document.getElementById("paintIndex").value.trim();
-      const maxFloat = document.getElementById("maxFloat").value.trim();
+    async function searchSteamPrice() {
+      const marketHashName = document.getElementById("marketHashName").value.trim()
+      const summary = document.getElementById("summary")
 
-      const summary = document.getElementById("summary");
-      const listingsDiv = document.getElementById("listings");
-
-      if (!defIndex || !paintIndex) {
-        summary.textContent = "Please enter both def_index and paint_index.";
-        listingsDiv.innerHTML = "";
-        return;
+      if (!marketHashName) {
+        summary.textContent = "Please enter a market_hash_name."
+        return
       }
 
-      summary.textContent = "Loading...";
-      listingsDiv.innerHTML = "";
+      summary.textContent = "Loading..."
 
       const params = new URLSearchParams({
-        def_index: defIndex,
-        paint_index: paintIndex
-      });
-
-      if (maxFloat !== "") {
-        params.set("max_float", maxFloat);
-      }
-
-      const url = `/api/search?${params.toString()}`;
+        market_hash_name: marketHashName,
+        currency: "1"
+      })
 
       try {
-        const res = await fetch(url, {
+        const res = await fetch(`/api/steam-price?${params.toString()}`, {
           headers: {
-            "Accept": "application/json"
+            Accept: "application/json"
           }
-        });
+        })
 
-        const text = await res.text();
+        const text = await res.text()
 
-        let data;
+        let data
         try {
-          data = JSON.parse(text);
+          data = JSON.parse(text)
         } catch {
           summary.textContent =
 `Server did not return JSON.
 Status: ${res.status}
 
 Preview:
-${text.slice(0, 500)}`;
-          return;
+${text.slice(0, 500)}`
+          return
         }
-
-        const listings = Array.isArray(data.data) ? data.data : [];
 
         if (!res.ok) {
           summary.textContent =
 `Request failed.
 Status: ${res.status}
 
-${JSON.stringify(data, null, 2)}`;
-          return;
+${JSON.stringify(data, null, 2)}`
+          return
         }
 
-        if (listings.length === 0) {
-          summary.textContent = "No listings found.";
-          return;
-        }
+        if (!data.success) {
+          summary.textContent =
+`Steam returned success: false
 
-        const lowest = listings[0];
+${JSON.stringify(data, null, 2)}`
+          return
+        }
 
         summary.textContent =
-`Status: ${res.status}
-Count loaded: ${listings.length}
-Lowest price: $${(lowest.price / 100).toFixed(2)}
-Item: ${lowest.item.market_hash_name}
-Lowest float: ${lowest.item.float_value}
-Listing ID: ${lowest.id}`;
-
-        listingsDiv.innerHTML = listings.map((x, i) => {
-          const sellerName = x.seller && x.seller.username ? x.seller.username : "Private/Hidden";
-          const inspect = x.item && x.item.inspect_link ? x.item.inspect_link : "N/A";
-
-          return `
-            <div class="listing">
-              <strong>#${i + 1} - $${(x.price / 100).toFixed(2)}</strong><br>
-              <span class="label">Item:</span> ${x.item.market_hash_name}<br>
-              <span class="label">Float:</span> ${x.item.float_value}<br>
-              <span class="label">Paint Seed:</span> ${x.item.paint_seed}<br>
-              <span class="label">Listing ID:</span> ${x.id}<br>
-              <span class="label">Seller:</span> ${sellerName}<br>
-              <span class="label">Inspect:</span> ${inspect}
-            </div>
-          `;
-        }).join("");
+`Item: ${marketHashName}
+Success: ${data.success}
+Lowest price: ${data.lowest_price || "N/A"}
+Median price: ${data.median_price || "N/A"}
+Volume: ${data.volume || "N/A"}`
       } catch (err) {
-        summary.textContent = `Error: ${err.message}`;
+        summary.textContent = `Error: ${err.message}`
       }
     }
   </script>
