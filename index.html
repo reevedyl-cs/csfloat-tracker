@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -12,7 +13,7 @@
 <style>
 
 body{
-font-family:Arial, sans-serif;
+font-family:Arial,sans-serif;
 background:#0f172a;
 color:#f8fafc;
 margin:0;
@@ -21,11 +22,10 @@ padding:24px;
 
 .card{
 max-width:920px;
-margin:0 auto;
+margin:auto;
 background:#1e293b;
 border-radius:18px;
 padding:24px;
-box-sizing:border-box;
 }
 
 h1{
@@ -35,7 +35,6 @@ font-size:40px;
 
 .muted{
 color:#94a3b8;
-font-size:15px;
 margin-bottom:16px;
 }
 
@@ -56,30 +55,7 @@ color:white;
 button{
 background:#2563eb;
 color:white;
-cursor:pointer;
 margin-top:12px;
-}
-
-.dropdown{
-background:#111827;
-border-radius:12px;
-margin-top:8px;
-overflow:hidden;
-border:1px solid #334155;
-}
-
-.dropdown-item{
-padding:14px;
-border-bottom:1px solid #1f2937;
-cursor:pointer;
-}
-
-.dropdown-item:last-child{
-border-bottom:none;
-}
-
-.dropdown-item:active{
-background:#1f2937;
 }
 
 .summary{
@@ -88,14 +64,17 @@ background:#0b132b;
 border-radius:14px;
 padding:18px;
 white-space:pre-wrap;
-font-size:17px;
 }
 
 canvas{
 margin-top:30px;
+background:#0b132b;
+border-radius:14px;
+padding:10px;
 }
 
 </style>
+
 </head>
 
 
@@ -106,12 +85,10 @@ margin-top:30px;
 <h1>Steam Market Tracker</h1>
 
 <div class="muted">
-Type something close like <b>deag blaze</b>, <b>lightning fn</b>, <b>fire serp ft</b>, or <b>dragon lore bs</b>.
+Search skins like <b>deag blaze</b>, <b>lightning fn</b>, or <b>fire serp ft</b>
 </div>
 
-<input id="marketHashName" placeholder="Type a skin name">
-
-<div id="dropdown" class="dropdown" style="display:none"></div>
+<input id="marketHashName">
 
 <button onclick="manualSearch()">Search</button>
 
@@ -127,80 +104,26 @@ Type something close like <b>deag blaze</b>, <b>lightning fn</b>, <b>fire serp f
 
 <script>
 
-const input = document.getElementById("marketHashName")
-const dropdown = document.getElementById("dropdown")
 const summary = document.getElementById("summary")
-
 let chart
 
 
-function normalize(text){
-return text
-.toLowerCase()
-.replace(/[|()\-]/g," ")
-.replace(/\s+/g," ")
-.trim()
-}
+async function manualSearch(){
 
-function tokenize(text){
-return normalize(text).split(" ")
-}
+const name = document.getElementById("marketHashName").value.trim()
 
-function scoreItem(query,item){
-
-const qTokens = tokenize(query)
-const itemNorm = normalize(item)
-
-let score = 0
-
-for(const token of qTokens){
-
-if(itemNorm.includes(token)){
-score += 10
-}else{
-return 0
-}
-
-}
-
-if(itemNorm.startsWith(normalize(query))) score += 20
-
-return score
-
-}
-
-function getMatches(query){
-
-if(query.length < 2) return []
-
-return SKINS
-.map(item=>({item,score:scoreItem(query,item)}))
-.filter(x=>x.score>0)
-.sort((a,b)=>b.score-a.score)
-.map(x=>x.item)
-.slice(0,8)
-
-}
-
-function renderDropdown(matches){
-
-if(!matches.length){
-dropdown.style.display="none"
-dropdown.innerHTML=""
+if(!name){
+summary.textContent="Enter a skin name."
 return
 }
 
-dropdown.innerHTML = matches.map(item=>`
-<div class="dropdown-item">${item}</div>
-`).join("")
-
-dropdown.style.display="block"
+await loadPrice(name)
+await loadHistory(name)
 
 }
 
-async function searchSteamPrice(name){
 
-summary.textContent="Loading..."
+async function loadPrice(name){
 
 const params = new URLSearchParams({
 market_hash_name:name,
@@ -211,24 +134,28 @@ const res = await fetch(`/api/steam-price?${params}`)
 
 const data = await res.json()
 
-summary.textContent =
+summary.textContent=
 `Item: ${name}
 Success: ${data.success}
 Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
 Volume: ${data.volume || "N/A"}`
 
-loadHistory(name)
-
 }
 
+
 async function loadHistory(name){
+
+try{
 
 const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`)
 
 const data = await res.json()
 
-if(!data.prices) return
+if(!data.prices){
+console.log("No price history returned")
+return
+}
 
 const labels = data.prices.map(p=>p[0])
 const prices = data.prices.map(p=>parseFloat(p[1]))
@@ -236,73 +163,41 @@ const prices = data.prices.map(p=>parseFloat(p[1]))
 if(chart) chart.destroy()
 
 chart = new Chart(document.getElementById("priceChart"),{
+
 type:"line",
+
 data:{
 labels:labels,
+
 datasets:[{
-label:"Price",
-data:prices
+label:"Steam Price",
+data:prices,
+borderWidth:2
 }]
+
+},
+
+options:{
+responsive:true,
+plugins:{
+legend:{
+display:true
 }
-})
-
 }
-
-function manualSearch(){
-
-const typed = input.value.trim()
-
-if(!typed){
-summary.textContent="Enter a skin name."
-return
 }
-
-const matches = getMatches(typed)
-
-if(matches.length===1){
-
-input.value = matches[0]
-
-searchSteamPrice(matches[0])
-
-return
-}
-
-if(matches.length>1){
-
-renderDropdown(matches)
-
-summary.textContent="Tap a suggestion."
-
-return
-}
-
-searchSteamPrice(typed)
-
-}
-
-
-dropdown.addEventListener("click",(e)=>{
-
-const row = e.target.closest(".dropdown-item")
-
-if(!row) return
-
-const item = row.textContent
-
-input.value = item
-
-dropdown.style.display="none"
-
-searchSteamPrice(item)
 
 })
 
-input.addEventListener("input",()=>{
-renderDropdown(getMatches(input.value))
-})
+}catch(err){
+
+console.log("Chart error",err)
+
+}
+
+}
 
 </script>
 
 </body>
+
 </html>
