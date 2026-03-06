@@ -1,203 +1,427 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steam Market Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 24px;
+    }
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    .card {
+      max-width: 920px;
+      margin: 0 auto;
+      background: #1e293b;
+      border-radius: 18px;
+      padding: 24px;
+      box-sizing: border-box;
+    }
 
-<title>Steam Market Tracker</title>
+    h1 {
+      margin: 0 0 12px 0;
+      font-size: 40px;
+      line-height: 1.05;
+    }
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    .muted {
+      color: #94a3b8;
+      margin-bottom: 16px;
+      line-height: 1.45;
+      font-size: 15px;
+    }
 
-<style>
+    .search-wrap {
+      position: relative;
+      margin-bottom: 12px;
+    }
 
-body{
-font-family:Arial,sans-serif;
-background:#0f172a;
-color:#f8fafc;
-margin:0;
-padding:24px;
-}
+    input,
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 16px;
+      font-size: 18px;
+      width: 100%;
+      box-sizing: border-box;
+    }
 
-.card{
-max-width:920px;
-margin:auto;
-background:#1e293b;
-border-radius:18px;
-padding:24px;
-}
+    input {
+      background: #475569;
+      color: white;
+    }
 
-h1{
-margin:0 0 12px 0;
-font-size:40px;
-}
+    input::placeholder {
+      color: #cbd5e1;
+    }
 
-.muted{
-color:#94a3b8;
-margin-bottom:16px;
-}
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      margin-top: 12px;
+    }
 
-input,button{
-border:none;
-border-radius:14px;
-padding:16px;
-font-size:18px;
-width:100%;
-box-sizing:border-box;
-}
+    .dropdown {
+      margin-top: 8px;
+      background: #0b132b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      overflow: hidden;
+    }
 
-input{
-background:#475569;
-color:white;
-}
+    .dropdown-item {
+      padding: 14px 16px;
+      border-bottom: 1px solid #1f2937;
+      cursor: pointer;
+      line-height: 1.35;
+      font-size: 16px;
+    }
 
-button{
-background:#2563eb;
-color:white;
-margin-top:12px;
-}
+    .dropdown-item:last-child {
+      border-bottom: none;
+    }
 
-.summary{
-margin-top:16px;
-background:#0b132b;
-border-radius:14px;
-padding:18px;
-white-space:pre-wrap;
-}
+    .dropdown-item.active,
+    .dropdown-item:active {
+      background: #1f2937;
+    }
 
-canvas{
-margin-top:30px;
-background:#0b132b;
-border-radius:14px;
-padding:10px;
-}
+    .summary {
+      margin-top: 16px;
+      background: #0b132b;
+      border-radius: 14px;
+      padding: 18px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 17px;
+      line-height: 1.4;
+    }
 
-</style>
+    .chart-wrap {
+      margin-top: 20px;
+      background: #0b132b;
+      border-radius: 14px;
+      padding: 12px;
+    }
 
+    canvas {
+      width: 100% !important;
+      height: 320px !important;
+    }
+  </style>
 </head>
-
-
 <body>
+  <div class="card">
+    <h1>Steam Market Tracker</h1>
 
-<div class="card">
+    <div class="muted">
+      Search like CSFloat: type something partial like <b>bl</b>, <b>light</b>, <b>fire serp</b>, or <b>dragon</b>.
+    </div>
 
-<h1>Steam Market Tracker</h1>
+    <div class="search-wrap">
+      <input
+        id="marketHashName"
+        type="text"
+        placeholder="Type a skin name..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="none"
+        spellcheck="false"
+      />
+      <div id="dropdown" class="dropdown" style="display:none;"></div>
+    </div>
 
-<div class="muted">
-Search skins like <b>deag blaze</b>, <b>lightning fn</b>, or <b>fire serp ft</b>
-</div>
+    <button onclick="manualSearch()">Search</button>
 
-<input id="marketHashName">
+    <div id="summary" class="summary">No search yet.</div>
 
-<button onclick="manualSearch()">Search</button>
+    <div class="chart-wrap">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
 
-<div id="summary" class="summary">No search yet.</div>
+  <script src="/skins.js"></script>
+  <script>
+    const input = document.getElementById("marketHashName");
+    const dropdown = document.getElementById("dropdown");
+    const summary = document.getElementById("summary");
 
-<canvas id="priceChart"></canvas>
+    let chart = null;
+    let currentMatches = [];
+    let activeIndex = -1;
 
-</div>
+    const aliasMap = {
+      "deag blaze": "Desert Eagle | Blaze (Factory New)",
+      "deagle blaze": "Desert Eagle | Blaze (Factory New)",
+      "blaze fn": "Desert Eagle | Blaze (Factory New)",
+      "blaze mw": "Desert Eagle | Blaze (Minimal Wear)",
 
+      "lightning": "AWP | Lightning Strike (Factory New)",
+      "lightning fn": "AWP | Lightning Strike (Factory New)",
+      "lightning mw": "AWP | Lightning Strike (Minimal Wear)",
+      "lightning ft": "AWP | Lightning Strike (Field-Tested)",
+      "awp lightning": "AWP | Lightning Strike (Factory New)",
+      "awp lightning fn": "AWP | Lightning Strike (Factory New)",
 
+      "fire serp": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serp fn": "AK-47 | Fire Serpent (Factory New)",
+      "fire serp mw": "AK-47 | Fire Serpent (Minimal Wear)",
+      "fire serp ft": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serp ww": "AK-47 | Fire Serpent (Well-Worn)",
+      "fire serp bs": "AK-47 | Fire Serpent (Battle-Scarred)",
 
-<script src="/skins.js"></script>
+      "blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
+      "blue phosphor fn": "M4A1-S | Blue Phosphor (Factory New)",
+      "blue phosphor mw": "M4A1-S | Blue Phosphor (Minimal Wear)",
 
-<script>
+      "dragon lore": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore fn": "AWP | Dragon Lore (Factory New)",
+      "dragon lore mw": "AWP | Dragon Lore (Minimal Wear)",
+      "dragon lore ft": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore ww": "AWP | Dragon Lore (Well-Worn)",
+      "dragon lore bs": "AWP | Dragon Lore (Battle-Scarred)"
+    };
 
-const summary = document.getElementById("summary")
-let chart
+    function normalize(text) {
+      return text
+        .toLowerCase()
+        .replace(/[|()\-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
 
+    function tokenize(text) {
+      return normalize(text).split(" ").filter(Boolean);
+    }
 
-async function manualSearch(){
+    function scoreItem(query, item) {
+      const q = normalize(query);
+      const qTokens = tokenize(query);
+      const itemNorm = normalize(item);
 
-const name = document.getElementById("marketHashName").value.trim()
+      if (!qTokens.length) return 0;
 
-if(!name){
-summary.textContent="Enter a skin name."
-return
-}
+      let score = 0;
 
-await loadPrice(name)
-await loadHistory(name)
+      if (aliasMap[q] === item) score += 1000;
+      if (itemNorm === q) score += 900;
+      if (itemNorm.startsWith(q)) score += 300;
+      if (itemNorm.includes(q)) score += 150;
 
-}
+      for (const token of qTokens) {
+        if (!itemNorm.includes(token)) return 0;
 
+        if (itemNorm.startsWith(token)) {
+          score += 60;
+        } else {
+          score += 25;
+        }
 
-async function loadPrice(name){
+        if (token.length >= 4) score += 10;
+      }
 
-const params = new URLSearchParams({
-market_hash_name:name,
-currency:"1"
-})
+      return score;
+    }
 
-const res = await fetch(`/api/steam-price?${params}`)
+    function getMatches(query) {
+      const q = query.trim();
+      if (q.length < 2) return [];
 
-const data = await res.json()
+      return SKINS
+        .map(item => ({ item, score: scoreItem(q, item) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
+        .map(x => x.item)
+        .slice(0, 8);
+    }
 
-summary.textContent=
+    function renderDropdown(matches) {
+      currentMatches = matches;
+      activeIndex = matches.length ? 0 : -1;
+
+      if (!matches.length) {
+        dropdown.style.display = "none";
+        dropdown.innerHTML = "";
+        return;
+      }
+
+      dropdown.innerHTML = matches.map((item, index) => `
+        <div class="dropdown-item ${index === activeIndex ? "active" : ""}" data-item="${item.replace(/"/g, "&quot;")}">
+          ${item}
+        </div>
+      `).join("");
+
+      dropdown.style.display = "block";
+    }
+
+    function refreshActiveRow() {
+      const rows = dropdown.querySelectorAll(".dropdown-item");
+      rows.forEach((row, index) => {
+        row.classList.toggle("active", index === activeIndex);
+      });
+    }
+
+    function chooseItem(item) {
+      input.value = item;
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
+      currentMatches = [];
+      activeIndex = -1;
+      searchSteamPrice(item);
+    }
+
+    async function searchSteamPrice(name) {
+      summary.textContent = "Loading...";
+
+      const params = new URLSearchParams({
+        market_hash_name: name,
+        currency: "1"
+      });
+
+      try {
+        const res = await fetch(`/api/steam-price?${params.toString()}`, {
+          headers: { Accept: "application/json" }
+        });
+
+        const data = await res.json();
+
+        summary.textContent =
 `Item: ${name}
 Success: ${data.success}
 Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
-Volume: ${data.volume || "N/A"}`
+Volume: ${data.volume || "N/A"}`;
 
-}
+        await loadHistory(name);
+      } catch (err) {
+        summary.textContent = `Error: ${err.message}`;
+      }
+    }
 
+    async function loadHistory(name) {
+      try {
+        const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`);
+        const data = await res.json();
 
-async function loadHistory(name){
+        if (!data.prices || !Array.isArray(data.prices) || !data.prices.length) {
+          if (chart) {
+            chart.destroy();
+            chart = null;
+          }
+          return;
+        }
 
-try{
+        const labels = data.prices.map(p => p[0]);
+        const prices = data.prices.map(p => parseFloat(p[1]));
 
-const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`)
+        if (chart) {
+          chart.destroy();
+        }
 
-const data = await res.json()
+        chart = new Chart(document.getElementById("priceChart"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "Steam Price",
+              data: prices,
+              borderWidth: 2,
+              tension: 0.2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  maxTicksLimit: 8
+                }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.log("History error", err);
+      }
+    }
 
-if(!data.prices){
-console.log("No price history returned")
-return
-}
+    function manualSearch() {
+      const typed = input.value.trim();
 
-const labels = data.prices.map(p=>p[0])
-const prices = data.prices.map(p=>parseFloat(p[1]))
+      if (!typed) {
+        summary.textContent = "Enter a skin name.";
+        return;
+      }
 
-if(chart) chart.destroy()
+      const matches = getMatches(typed);
 
-chart = new Chart(document.getElementById("priceChart"),{
+      if (matches.length) {
+        chooseItem(matches[0]);
+        return;
+      }
 
-type:"line",
+      searchSteamPrice(typed);
+    }
 
-data:{
-labels:labels,
+    input.addEventListener("input", () => {
+      renderDropdown(getMatches(input.value));
+    });
 
-datasets:[{
-label:"Steam Price",
-data:prices,
-borderWidth:2
-}]
+    input.addEventListener("focus", () => {
+      renderDropdown(getMatches(input.value));
+    });
 
-},
+    input.addEventListener("keydown", (e) => {
+      if (dropdown.style.display === "none" || !currentMatches.length) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          manualSearch();
+        }
+        return;
+      }
 
-options:{
-responsive:true,
-plugins:{
-legend:{
-display:true
-}
-}
-}
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % currentMatches.length;
+        refreshActiveRow();
+      }
 
-})
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + currentMatches.length) % currentMatches.length;
+        refreshActiveRow();
+      }
 
-}catch(err){
+      if (e.key === "Enter") {
+        e.preventDefault();
+        chooseItem(currentMatches[activeIndex >= 0 ? activeIndex : 0]);
+      }
+    });
 
-console.log("Chart error",err)
+    dropdown.addEventListener("click", (e) => {
+      const row = e.target.closest(".dropdown-item");
+      if (!row) return;
+      chooseItem(row.getAttribute("data-item"));
+    });
 
-}
-
-}
-
-</script>
-
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target) && e.target !== input) {
+        dropdown.style.display = "none";
+      }
+    });
+  </script>
 </body>
-
 </html>
