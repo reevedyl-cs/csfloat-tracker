@@ -72,6 +72,8 @@
       border: 1px solid #334155;
       border-radius: 14px;
       overflow: hidden;
+      max-height: 320px;
+      overflow-y: auto;
     }
 
     .dropdown-item {
@@ -180,8 +182,8 @@
   <div class="card">
     <h1>Steam Market Tracker</h1>
 
-    <div class="muted">
-      Search like CSFloat: type something partial like <b>bl</b>, <b>light</b>, <b>fire serp</b>, or <b>dragon</b>.
+    <div id="datasetStatus" class="muted">
+      Loading full skin database...
     </div>
 
     <div class="search-wrap">
@@ -221,47 +223,15 @@
     const dropdown = document.getElementById("dropdown");
     const summary = document.getElementById("summary");
     const pumpBox = document.getElementById("pumpBox");
+    const datasetStatus = document.getElementById("datasetStatus");
 
     let currentMatches = [];
     let activeIndex = -1;
 
-    const aliasMap = {
-      "deag blaze": "Desert Eagle | Blaze (Factory New)",
-      "deagle blaze": "Desert Eagle | Blaze (Factory New)",
-      "blaze fn": "Desert Eagle | Blaze (Factory New)",
-      "blaze mw": "Desert Eagle | Blaze (Minimal Wear)",
-
-      "lightning": "AWP | Lightning Strike (Factory New)",
-      "lightning fn": "AWP | Lightning Strike (Factory New)",
-      "lightning mw": "AWP | Lightning Strike (Minimal Wear)",
-      "lightning ft": "AWP | Lightning Strike (Field-Tested)",
-      "awp lightning": "AWP | Lightning Strike (Factory New)",
-      "awp lightning fn": "AWP | Lightning Strike (Factory New)",
-
-      "fire serp": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serp fn": "AK-47 | Fire Serpent (Factory New)",
-      "fire serp mw": "AK-47 | Fire Serpent (Minimal Wear)",
-      "fire serp ft": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serp ww": "AK-47 | Fire Serpent (Well-Worn)",
-      "fire serp bs": "AK-47 | Fire Serpent (Battle-Scarred)",
-
-      "blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
-      "blue phosphor fn": "M4A1-S | Blue Phosphor (Factory New)",
-      "blue phosphor mw": "M4A1-S | Blue Phosphor (Minimal Wear)",
-
-      "dragon lore": "AWP | Dragon Lore (Field-Tested)",
-      "dragon lore fn": "AWP | Dragon Lore (Factory New)",
-      "dragon lore mw": "AWP | Dragon Lore (Minimal Wear)",
-      "dragon lore ft": "AWP | Dragon Lore (Field-Tested)",
-      "dragon lore ww": "AWP | Dragon Lore (Well-Worn)",
-      "dragon lore bs": "AWP | Dragon Lore (Battle-Scarred)"
-    };
-
     function normalize(text) {
       return text
         .toLowerCase()
-        .replace(/[|()\-]/g, " ")
+        .replace(/[|()\-™]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
@@ -279,7 +249,6 @@
 
       let score = 0;
 
-      if (aliasMap[q] === item) score += 1000;
       if (itemNorm === q) score += 900;
       if (itemNorm.startsWith(q)) score += 300;
       if (itemNorm.includes(q)) score += 150;
@@ -301,14 +270,14 @@
 
     function getMatches(query) {
       const q = query.trim();
-      if (q.length < 2) return [];
+      if (q.length < 2 || !window.SKINS_READY) return [];
 
-      return SKINS
+      return window.SKINS
         .map(item => ({ item, score: scoreItem(q, item) }))
         .filter(x => x.score > 0)
         .sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
         .map(x => x.item)
-        .slice(0, 8);
+        .slice(0, 12);
     }
 
     function renderDropdown(matches) {
@@ -578,6 +547,14 @@ Volume: ${data.volume || "N/A"}`;
       const row = e.target.closest(".dropdown-item");
       if (!row) return;
       chooseItem(row.getAttribute("data-item"));
+    });
+
+    document.addEventListener("skins-ready", (e) => {
+      if (e.detail && e.detail.fallback) {
+        datasetStatus.textContent = `Loaded fallback skin list (${e.detail.count} items). Full dataset failed to load.`;
+      } else {
+        datasetStatus.textContent = `Loaded full skin database (${e.detail.count} items).`;
+      }
     });
 
     document.addEventListener("click", (e) => {
