@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Steam Market Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -103,25 +102,77 @@
       line-height: 1.4;
     }
 
-    .chart-wrap {
+    .pump-wrap {
       margin-top: 20px;
       background: #0b132b;
       border-radius: 14px;
-      padding: 12px;
+      padding: 16px;
     }
 
-    #historyStatus {
+    .pump-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .pump-box {
+      border-radius: 14px;
+      padding: 18px;
+      line-height: 1.5;
+      font-size: 16px;
+    }
+
+    .pump-low {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.45);
+    }
+
+    .pump-watch {
+      background: rgba(250, 204, 21, 0.10);
+      border: 1px solid rgba(250, 204, 21, 0.45);
+    }
+
+    .pump-medium {
+      background: rgba(249, 115, 22, 0.12);
+      border: 1px solid rgba(249, 115, 22, 0.45);
+    }
+
+    .pump-high {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+    }
+
+    .pump-score {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .pump-rating {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .pump-sub {
+      color: #cbd5e1;
+      margin-bottom: 12px;
+    }
+
+    .pump-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .pump-list li {
+      margin-bottom: 8px;
+    }
+
+    .small-note {
+      margin-top: 12px;
       color: #94a3b8;
-      font-size: 14px;
-      margin-bottom: 10px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    canvas {
-      width: 100% !important;
-      height: 320px !important;
-      display: block;
+      font-size: 13px;
+      line-height: 1.45;
     }
   </style>
 </head>
@@ -150,9 +201,17 @@
 
     <div id="summary" class="summary">No search yet.</div>
 
-    <div class="chart-wrap">
-      <div id="historyStatus">No chart yet.</div>
-      <canvas id="priceChart"></canvas>
+    <div class="pump-wrap">
+      <div class="pump-title">Potential Price Pump</div>
+      <div id="pumpBox" class="pump-box pump-watch">
+        <div class="pump-score">-- / 100</div>
+        <div class="pump-rating">No item analyzed yet</div>
+        <div class="pump-sub">Search an item to generate a pump score.</div>
+        <ul class="pump-list">
+          <li>The score uses Steam lowest price, median price, and volume.</li>
+          <li>It is a signal, not a guarantee.</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -161,9 +220,8 @@
     const input = document.getElementById("marketHashName");
     const dropdown = document.getElementById("dropdown");
     const summary = document.getElementById("summary");
-    const historyStatus = document.getElementById("historyStatus");
+    const pumpBox = document.getElementById("pumpBox");
 
-    let chart = null;
     let currentMatches = [];
     let activeIndex = -1;
 
@@ -288,9 +346,141 @@
       searchSteamPrice(item);
     }
 
+    function parseMoney(value) {
+      if (typeof value === "number") return value;
+      if (typeof value !== "string") return NaN;
+
+      let cleaned = value.replace(/[^0-9.,-]/g, "");
+
+      if (cleaned.includes(",") && cleaned.includes(".")) {
+        cleaned = cleaned.replace(/,/g, "");
+      } else if (cleaned.includes(",") && !cleaned.includes(".")) {
+        cleaned = cleaned.replace(",", ".");
+      }
+
+      return parseFloat(cleaned);
+    }
+
+    function parseVolume(value) {
+      if (typeof value === "number") return value;
+      if (typeof value !== "string") return NaN;
+      const cleaned = value.replace(/[^0-9]/g, "");
+      return parseInt(cleaned || "0", 10);
+    }
+
+    function buildPumpScore(lowest, median, volume) {
+      let score = 0;
+      const reasons = [];
+
+      const spread = Number.isFinite(lowest) && Number.isFinite(median) && median > 0
+        ? ((lowest - median) / median) * 100
+        : null;
+
+      if (Number.isFinite(volume)) {
+        if (volume <= 2) {
+          score += 35;
+          reasons.push("Very low daily volume makes the market easier to move.");
+        } else if (volume <= 5) {
+          score += 25;
+          reasons.push("Low daily volume suggests thin liquidity.");
+        } else if (volume <= 10) {
+          score += 15;
+          reasons.push("Moderate volume gives some pump potential.");
+        } else if (volume >= 40) {
+          reasons.push("High daily volume makes this market harder to push quickly.");
+        }
+      } else {
+        reasons.push("Volume could not be read, so the score is less certain.");
+      }
+
+      if (spread !== null) {
+        if (spread >= 3) {
+          score += 30;
+          reasons.push("Lowest price is far above median, which suggests the floor has already been pushed up.");
+        } else if (spread >= 1) {
+          score += 18;
+          reasons.push("Lowest price is above median, showing some floor pressure.");
+        } else if (spread <= -2) {
+          score -= 10;
+          reasons.push("Lowest price is below median, which weakens immediate pump pressure.");
+        } else {
+          reasons.push("Lowest price is close to median, so the market looks more balanced.");
+        }
+      } else {
+        reasons.push("Median price was unavailable, so floor pressure could not be scored fully.");
+      }
+
+      if (Number.isFinite(lowest)) {
+        if (lowest >= 1000) {
+          score += 12;
+          reasons.push("High-priced, niche skins can move sharply when supply is thin.");
+        } else if (lowest >= 300) {
+          score += 6;
+          reasons.push("Mid-to-high priced skins can pump harder than common liquid skins.");
+        }
+      }
+
+      score = Math.max(0, Math.min(100, Math.round(score)));
+
+      let rating = "Stable";
+      let className = "pump-low";
+
+      if (score >= 75) {
+        rating = "High Pump Potential";
+        className = "pump-high";
+      } else if (score >= 50) {
+        rating = "Pump Potential";
+        className = "pump-medium";
+      } else if (score >= 25) {
+        rating = "Watch";
+        className = "pump-watch";
+      }
+
+      let sub = "This is a simple signal based on Steam market data only.";
+      if (spread !== null && Number.isFinite(volume)) {
+        sub = `Spread: ${spread.toFixed(2)}% | Volume: ${volume}`;
+      } else if (Number.isFinite(volume)) {
+        sub = `Volume: ${volume}`;
+      }
+
+      return {
+        score,
+        rating,
+        className,
+        reasons,
+        sub
+      };
+    }
+
+    function renderPumpScore(result) {
+      pumpBox.className = `pump-box ${result.className}`;
+      pumpBox.innerHTML = `
+        <div class="pump-score">${result.score} / 100</div>
+        <div class="pump-rating">${result.rating}</div>
+        <div class="pump-sub">${result.sub}</div>
+        <ul class="pump-list">
+          ${result.reasons.map(reason => `<li>${reason}</li>`).join("")}
+        </ul>
+        <div class="small-note">
+          This score is a market signal, not a prediction guarantee. It does not include listing depth, cash-market prices, or external hype.
+        </div>
+      `;
+    }
+
     async function searchSteamPrice(name) {
       summary.textContent = "Loading...";
-      historyStatus.textContent = "Loading chart...";
+
+      pumpBox.className = "pump-box pump-watch";
+      pumpBox.innerHTML = `
+        <div class="pump-score">-- / 100</div>
+        <div class="pump-rating">Calculating...</div>
+        <div class="pump-sub">Reading Steam market data.</div>
+        <ul class="pump-list">
+          <li>Checking lowest price</li>
+          <li>Checking median price</li>
+          <li>Checking volume</li>
+        </ul>
+      `;
 
       const params = new URLSearchParams({
         market_hash_name: name,
@@ -311,102 +501,23 @@ Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
 Volume: ${data.volume || "N/A"}`;
 
-        await loadHistory(name);
+        const lowest = parseMoney(data.lowest_price);
+        const median = parseMoney(data.median_price);
+        const volume = parseVolume(data.volume);
+
+        const result = buildPumpScore(lowest, median, volume);
+        renderPumpScore(result);
       } catch (err) {
         summary.textContent = `Error: ${err.message}`;
-        historyStatus.textContent = "Chart failed to load.";
-      }
-    }
-
-    function parseSteamPrice(value) {
-      if (typeof value === "number") return value;
-      if (typeof value !== "string") return NaN;
-
-      let cleaned = value.replace(/[^0-9.,-]/g, "");
-
-      if (cleaned.includes(",") && cleaned.includes(".")) {
-        cleaned = cleaned.replace(/,/g, "");
-      } else if (cleaned.includes(",") && !cleaned.includes(".")) {
-        cleaned = cleaned.replace(",", ".");
-      }
-
-      return parseFloat(cleaned);
-    }
-
-    async function loadHistory(name) {
-      try {
-        const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`);
-        const data = await res.json();
-
-        if (!data || !Array.isArray(data.prices) || !data.prices.length) {
-          historyStatus.textContent = "No price history returned for this item.";
-          if (chart) {
-            chart.destroy();
-            chart = null;
-          }
-          return;
-        }
-
-        const rawLabels = data.prices.map(p => p[0]);
-        const rawPrices = data.prices.map(p => parseSteamPrice(p[1]));
-
-        const filtered = rawLabels.map((label, index) => ({
-          label,
-          price: rawPrices[index]
-        })).filter(x => Number.isFinite(x.price));
-
-        if (!filtered.length) {
-          historyStatus.textContent = "Price history came back, but the prices could not be parsed.";
-          if (chart) {
-            chart.destroy();
-            chart = null;
-          }
-          return;
-        }
-
-        const labels = filtered.map(x => x.label);
-        const prices = filtered.map(x => x.price);
-
-        historyStatus.textContent = `History points loaded: ${prices.length}`;
-
-        if (chart) {
-          chart.destroy();
-        }
-
-        chart = new Chart(document.getElementById("priceChart"), {
-          type: "line",
-          data: {
-            labels,
-            datasets: [{
-              label: "Steam Price",
-              data: prices,
-              borderWidth: 2,
-              tension: 0.2
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: true
-              }
-            },
-            scales: {
-              x: {
-                ticks: {
-                  maxTicksLimit: 8
-                }
-              }
-            }
-          }
-        });
-      } catch (err) {
-        historyStatus.textContent = `History error: ${err.message}`;
-        if (chart) {
-          chart.destroy();
-          chart = null;
-        }
+        pumpBox.className = "pump-box pump-watch";
+        pumpBox.innerHTML = `
+          <div class="pump-score">-- / 100</div>
+          <div class="pump-rating">Calculation failed</div>
+          <div class="pump-sub">The Steam request failed.</div>
+          <ul class="pump-list">
+            <li>${err.message}</li>
+          </ul>
+        `;
       }
     }
 
