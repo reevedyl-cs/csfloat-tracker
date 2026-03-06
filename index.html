@@ -66,6 +66,11 @@
       margin-top: 12px;
     }
 
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .dropdown {
       margin-top: 8px;
       background: #0b132b;
@@ -199,7 +204,7 @@
       <div id="dropdown" class="dropdown" style="display:none;"></div>
     </div>
 
-    <button onclick="manualSearch()">Search</button>
+    <button id="searchButton" onclick="manualSearch()" disabled>Search</button>
 
     <div id="summary" class="summary">No search yet.</div>
 
@@ -217,16 +222,39 @@
     </div>
   </div>
 
-  <script src="/skins.js"></script>
   <script>
     const input = document.getElementById("marketHashName");
     const dropdown = document.getElementById("dropdown");
     const summary = document.getElementById("summary");
     const pumpBox = document.getElementById("pumpBox");
     const datasetStatus = document.getElementById("datasetStatus");
+    const searchButton = document.getElementById("searchButton");
 
+    let SKINS = [];
+    let SKINS_READY = false;
     let currentMatches = [];
     let activeIndex = -1;
+
+    async function loadSkinDatabase() {
+      try {
+        const res = await fetch("/api/skins", {
+          headers: { Accept: "application/json" }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !Array.isArray(data.skins)) {
+          throw new Error(data.error || "Could not load skins");
+        }
+
+        SKINS = data.skins;
+        SKINS_READY = true;
+        datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
+        searchButton.disabled = false;
+      } catch (err) {
+        datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
+      }
+    }
 
     function normalize(text) {
       return text
@@ -270,9 +298,9 @@
 
     function getMatches(query) {
       const q = query.trim();
-      if (q.length < 2 || !window.SKINS_READY) return [];
+      if (q.length < 2 || !SKINS_READY) return [];
 
-      return window.SKINS
+      return SKINS
         .map(item => ({ item, score: scoreItem(q, item) }))
         .filter(x => x.score > 0)
         .sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
@@ -491,6 +519,11 @@ Volume: ${data.volume || "N/A"}`;
     }
 
     function manualSearch() {
+      if (!SKINS_READY) {
+        summary.textContent = "Skin database is still loading.";
+        return;
+      }
+
       const typed = input.value.trim();
 
       if (!typed) {
@@ -549,19 +582,13 @@ Volume: ${data.volume || "N/A"}`;
       chooseItem(row.getAttribute("data-item"));
     });
 
-    document.addEventListener("skins-ready", (e) => {
-      if (e.detail && e.detail.fallback) {
-        datasetStatus.textContent = `Loaded fallback skin list (${e.detail.count} items). Full dataset failed to load.`;
-      } else {
-        datasetStatus.textContent = `Loaded full skin database (${e.detail.count} items).`;
-      }
-    });
-
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target) && e.target !== input) {
         dropdown.style.display = "none";
       }
     });
+
+    loadSkinDatabase();
   </script>
 </body>
 </html>
