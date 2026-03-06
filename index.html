@@ -1,373 +1,308 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Market Tracker</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #f8fafc;
-      margin: 0;
-      padding: 24px;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    .card {
-      max-width: 920px;
-      margin: 0 auto;
-      background: #1e293b;
-      border-radius: 18px;
-      padding: 24px;
-      box-sizing: border-box;
-    }
+<title>Steam Market Tracker</title>
 
-    h1 {
-      margin: 0 0 12px 0;
-      font-size: 40px;
-      line-height: 1.05;
-    }
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    .muted {
-      color: #94a3b8;
-      font-size: 15px;
-      margin-bottom: 16px;
-      line-height: 1.4;
-    }
+<style>
 
-    .search-wrap {
-      position: relative;
-      margin-bottom: 14px;
-    }
+body{
+font-family:Arial, sans-serif;
+background:#0f172a;
+color:#f8fafc;
+margin:0;
+padding:24px;
+}
 
-    input, button {
-      border: none;
-      border-radius: 14px;
-      padding: 16px;
-      font-size: 18px;
-      box-sizing: border-box;
-      width: 100%;
-    }
+.card{
+max-width:920px;
+margin:0 auto;
+background:#1e293b;
+border-radius:18px;
+padding:24px;
+box-sizing:border-box;
+}
 
-    input {
-      background: #475569;
-      color: white;
-    }
+h1{
+margin:0 0 12px 0;
+font-size:40px;
+}
 
-    button {
-      background: #2563eb;
-      color: white;
-      cursor: pointer;
-      margin-top: 12px;
-    }
+.muted{
+color:#94a3b8;
+font-size:15px;
+margin-bottom:16px;
+}
 
-    .dropdown {
-      position: relative;
-      margin-top: 8px;
-      background: #111827;
-      border-radius: 12px;
-      overflow: hidden;
-      z-index: 20;
-      border: 1px solid #334155;
-    }
+input,button{
+border:none;
+border-radius:14px;
+padding:16px;
+font-size:18px;
+width:100%;
+box-sizing:border-box;
+}
 
-    .dropdown-item {
-      padding: 14px;
-      border-bottom: 1px solid #1f2937;
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1.35;
-    }
+input{
+background:#475569;
+color:white;
+}
 
-    .dropdown-item:last-child {
-      border-bottom: none;
-    }
+button{
+background:#2563eb;
+color:white;
+cursor:pointer;
+margin-top:12px;
+}
 
-    .dropdown-item:active {
-      background: #1f2937;
-    }
+.dropdown{
+background:#111827;
+border-radius:12px;
+margin-top:8px;
+overflow:hidden;
+border:1px solid #334155;
+}
 
-    .summary {
-      margin-top: 16px;
-      background: #0b132b;
-      border-radius: 14px;
-      padding: 18px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 17px;
-    }
+.dropdown-item{
+padding:14px;
+border-bottom:1px solid #1f2937;
+cursor:pointer;
+}
 
-    .quick-buttons {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 10px;
-      margin-bottom: 14px;
-    }
+.dropdown-item:last-child{
+border-bottom:none;
+}
 
-    .quick-buttons button {
-      margin-top: 0;
-      background: #334155;
-      font-size: 16px;
-      padding: 14px;
-    }
+.dropdown-item:active{
+background:#1f2937;
+}
 
-    .quick-buttons button:active {
-      background: #475569;
-    }
+.summary{
+margin-top:16px;
+background:#0b132b;
+border-radius:14px;
+padding:18px;
+white-space:pre-wrap;
+font-size:17px;
+}
 
-    @media (max-width: 760px) {
-      h1 {
-        font-size: 34px;
-      }
+canvas{
+margin-top:30px;
+}
 
-      .quick-buttons {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+</style>
 </head>
+
+
 <body>
-  <div class="card">
-    <h1>Steam Market Tracker</h1>
 
-    <div class="muted">
-      Type something close like <b>deag blaze</b>, <b>lightning fn</b>, <b>fire serp ft</b>, or <b>dragon lore bs</b>.
-    </div>
+<div class="card">
 
-    <div class="quick-buttons">
-      <button onclick="quickFill('deag blaze')">Deagle Blaze</button>
-      <button onclick="quickFill('lightning fn')">Lightning Strike FN</button>
-      <button onclick="quickFill('fire serp ft')">Fire Serpent FT</button>
-      <button onclick="quickFill('dragon lore ft')">Dragon Lore FT</button>
-    </div>
+<h1>Steam Market Tracker</h1>
 
-    <div class="search-wrap">
-      <input
-        id="marketHashName"
-        type="text"
-        placeholder="Type a skin name..."
-        autocomplete="off"
-        autocorrect="off"
-        autocapitalize="none"
-        spellcheck="false"
-      />
-      <div id="dropdown" class="dropdown" style="display:none;"></div>
-    </div>
+<div class="muted">
+Type something close like <b>deag blaze</b>, <b>lightning fn</b>, <b>fire serp ft</b>, or <b>dragon lore bs</b>.
+</div>
 
-    <button onclick="manualSearch()">Search</button>
+<input id="marketHashName" placeholder="Type a skin name">
 
-    <div id="summary" class="summary">No search yet.</div>
-  </div>
+<div id="dropdown" class="dropdown" style="display:none"></div>
 
-  <script src="/skins.js"></script>
-  <script>
-    const input = document.getElementById("marketHashName");
-    const dropdown = document.getElementById("dropdown");
-    const summary = document.getElementById("summary");
+<button onclick="manualSearch()">Search</button>
 
-    const aliasMap = {
-      "deag blaze": "Desert Eagle | Blaze (Factory New)",
-      "deagle blaze": "Desert Eagle | Blaze (Factory New)",
-      "blaze fn": "Desert Eagle | Blaze (Factory New)",
-      "blaze mw": "Desert Eagle | Blaze (Minimal Wear)",
+<div id="summary" class="summary">No search yet.</div>
 
-      "lightning": "AWP | Lightning Strike (Factory New)",
-      "lightning fn": "AWP | Lightning Strike (Factory New)",
-      "lightning mw": "AWP | Lightning Strike (Minimal Wear)",
-      "lightning ft": "AWP | Lightning Strike (Field-Tested)",
-      "awp lightning": "AWP | Lightning Strike (Factory New)",
-      "awp lightning fn": "AWP | Lightning Strike (Factory New)",
+<canvas id="priceChart"></canvas>
 
-      "fire serp": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serp fn": "AK-47 | Fire Serpent (Factory New)",
-      "fire serp mw": "AK-47 | Fire Serpent (Minimal Wear)",
-      "fire serp ft": "AK-47 | Fire Serpent (Field-Tested)",
-      "fire serp ww": "AK-47 | Fire Serpent (Well-Worn)",
-      "fire serp bs": "AK-47 | Fire Serpent (Battle-Scarred)",
+</div>
 
-      "blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
-      "blue phosphor fn": "M4A1-S | Blue Phosphor (Factory New)",
-      "blue phosphor mw": "M4A1-S | Blue Phosphor (Minimal Wear)",
 
-      "dragon lore": "AWP | Dragon Lore (Field-Tested)",
-      "dragon lore fn": "AWP | Dragon Lore (Factory New)",
-      "dragon lore mw": "AWP | Dragon Lore (Minimal Wear)",
-      "dragon lore ft": "AWP | Dragon Lore (Field-Tested)",
-      "dragon lore ww": "AWP | Dragon Lore (Well-Worn)",
-      "dragon lore bs": "AWP | Dragon Lore (Battle-Scarred)"
-    };
 
-    function normalize(text) {
-      return text
-        .toLowerCase()
-        .replace(/[|()\-]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
+<script src="/skins.js"></script>
 
-    function tokenize(text) {
-      return normalize(text).split(" ").filter(Boolean);
-    }
+<script>
 
-    function getAliasMatch(query) {
-      const q = normalize(query);
-      return aliasMap[q] || null;
-    }
+const input = document.getElementById("marketHashName")
+const dropdown = document.getElementById("dropdown")
+const summary = document.getElementById("summary")
 
-    function scoreItem(query, item) {
-      const qTokens = tokenize(query);
-      const itemNorm = normalize(item);
+let chart
 
-      if (!qTokens.length) return 0;
 
-      let score = 0;
+function normalize(text){
+return text
+.toLowerCase()
+.replace(/[|()\-]/g," ")
+.replace(/\s+/g," ")
+.trim()
+}
 
-      for (const token of qTokens) {
-        if (itemNorm.includes(token)) {
-          score += token.length >= 3 ? 20 : 10;
-        } else {
-          return 0;
-        }
-      }
+function tokenize(text){
+return normalize(text).split(" ")
+}
 
-      if (itemNorm.startsWith(normalize(query))) score += 25;
-      if (itemNorm.includes(normalize(query))) score += 15;
+function scoreItem(query,item){
 
-      return score;
-    }
+const qTokens = tokenize(query)
+const itemNorm = normalize(item)
 
-    function getMatches(query) {
-      const q = query.trim();
-      if (q.length < 2) return [];
+let score = 0
 
-      const alias = getAliasMatch(q);
-      if (alias) {
-        const matches = [alias, ...SKINS.filter(x => x !== alias && scoreItem(q, x) > 0)];
-        return matches.slice(0, 8);
-      }
+for(const token of qTokens){
 
-      return SKINS
-        .map(item => ({ item, score: scoreItem(q, item) }))
-        .filter(x => x.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map(x => x.item)
-        .slice(0, 8);
-    }
+if(itemNorm.includes(token)){
+score += 10
+}else{
+return 0
+}
 
-    function renderDropdown(matches) {
-      if (!matches.length) {
-        dropdown.style.display = "none";
-        dropdown.innerHTML = "";
-        return;
-      }
+}
 
-      dropdown.innerHTML = matches.map(item => `
-        <div class="dropdown-item" data-item="${item.replace(/"/g, '&quot;')}">${item}</div>
-      `).join("");
+if(itemNorm.startsWith(normalize(query))) score += 20
 
-      dropdown.style.display = "block";
-    }
+return score
 
-    async function searchSteamPrice(exactName) {
-      summary.textContent = "Loading...";
-      dropdown.style.display = "none";
-      dropdown.innerHTML = "";
+}
 
-      const params = new URLSearchParams({
-        market_hash_name: exactName,
-        currency: "1"
-      });
+function getMatches(query){
 
-      try {
-        const res = await fetch(`/api/steam-price?${params.toString()}`, {
-          headers: { Accept: "application/json" }
-        });
+if(query.length < 2) return []
 
-        const text = await res.text();
+return SKINS
+.map(item=>({item,score:scoreItem(query,item)}))
+.filter(x=>x.score>0)
+.sort((a,b)=>b.score-a.score)
+.map(x=>x.item)
+.slice(0,8)
 
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          summary.textContent = `Server did not return JSON.\nStatus: ${res.status}\n\nPreview:\n${text.slice(0, 500)}`;
-          return;
-        }
+}
 
-        if (!res.ok) {
-          summary.textContent = `Request failed.\nStatus: ${res.status}\n\n${JSON.stringify(data, null, 2)}`;
-          return;
-        }
+function renderDropdown(matches){
 
-        summary.textContent =
-`Item: ${exactName}
+if(!matches.length){
+dropdown.style.display="none"
+dropdown.innerHTML=""
+return
+}
+
+dropdown.innerHTML = matches.map(item=>`
+<div class="dropdown-item">${item}</div>
+`).join("")
+
+dropdown.style.display="block"
+
+}
+
+async function searchSteamPrice(name){
+
+summary.textContent="Loading..."
+
+const params = new URLSearchParams({
+market_hash_name:name,
+currency:"1"
+})
+
+const res = await fetch(`/api/steam-price?${params}`)
+
+const data = await res.json()
+
+summary.textContent =
+`Item: ${name}
 Success: ${data.success}
 Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
-Volume: ${data.volume || "N/A"}`;
-      } catch (err) {
-        summary.textContent = `Error: ${err.message}`;
-      }
-    }
+Volume: ${data.volume || "N/A"}`
 
-    function manualSearch() {
-      const typed = input.value.trim();
-      if (!typed) {
-        summary.textContent = "Please enter a skin name.";
-        return;
-      }
+loadHistory(name)
 
-      const alias = getAliasMatch(typed);
-      if (alias) {
-        input.value = alias;
-        searchSteamPrice(alias);
-        return;
-      }
+}
 
-      const matches = getMatches(typed);
-      if (matches.length === 1) {
-        input.value = matches[0];
-        searchSteamPrice(matches[0]);
-        return;
-      }
+async function loadHistory(name){
 
-      if (matches.length > 1) {
-        renderDropdown(matches);
-        summary.textContent = "Tap one of the suggestions.";
-        return;
-      }
+const res = await fetch(`/api/steam-history?market_hash_name=${encodeURIComponent(name)}`)
 
-      searchSteamPrice(typed);
-    }
+const data = await res.json()
 
-    function quickFill(text) {
-      input.value = text;
-      manualSearch();
-    }
+if(!data.prices) return
 
-    dropdown.addEventListener("click", (e) => {
-      const row = e.target.closest(".dropdown-item");
-      if (!row) return;
+const labels = data.prices.map(p=>p[0])
+const prices = data.prices.map(p=>parseFloat(p[1]))
 
-      const item = row.getAttribute("data-item");
-      input.value = item;
-      searchSteamPrice(item);
-    });
+if(chart) chart.destroy()
 
-    input.addEventListener("input", () => {
-      renderDropdown(getMatches(input.value));
-    });
+chart = new Chart(document.getElementById("priceChart"),{
+type:"line",
+data:{
+labels:labels,
+datasets:[{
+label:"Price",
+data:prices
+}]
+}
+})
 
-    input.addEventListener("focus", () => {
-      renderDropdown(getMatches(input.value));
-    });
+}
 
-    document.addEventListener("click", (e) => {
-      if (!dropdown.contains(e.target) && e.target !== input) {
-        dropdown.style.display = "none";
-      }
-    });
-  </script>
+function manualSearch(){
+
+const typed = input.value.trim()
+
+if(!typed){
+summary.textContent="Enter a skin name."
+return
+}
+
+const matches = getMatches(typed)
+
+if(matches.length===1){
+
+input.value = matches[0]
+
+searchSteamPrice(matches[0])
+
+return
+}
+
+if(matches.length>1){
+
+renderDropdown(matches)
+
+summary.textContent="Tap a suggestion."
+
+return
+}
+
+searchSteamPrice(typed)
+
+}
+
+
+dropdown.addEventListener("click",(e)=>{
+
+const row = e.target.closest(".dropdown-item")
+
+if(!row) return
+
+const item = row.textContent
+
+input.value = item
+
+dropdown.style.display="none"
+
+searchSteamPrice(item)
+
+})
+
+input.addEventListener("input",()=>{
+renderDropdown(getMatches(input.value))
+})
+
+</script>
+
 </body>
 </html>
