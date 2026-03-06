@@ -20,12 +20,19 @@
       border-radius: 18px;
       padding: 24px;
       box-sizing: border-box;
+      margin-bottom: 20px;
     }
 
     h1 {
       margin: 0 0 12px 0;
       font-size: 40px;
       line-height: 1.05;
+    }
+
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 28px;
+      line-height: 1.1;
     }
 
     .muted {
@@ -69,6 +76,10 @@
     button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+    }
+
+    .secondary-button {
+      background: #334155;
     }
 
     .dropdown {
@@ -181,6 +192,74 @@
       font-size: 13px;
       line-height: 1.45;
     }
+
+    .radar-status {
+      color: #cbd5e1;
+      margin-bottom: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .radar-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .radar-item {
+      background: #0b132b;
+      border-radius: 14px;
+      padding: 16px;
+      border: 1px solid #1f2937;
+    }
+
+    .radar-rank {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    .radar-name {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    .radar-meta {
+      color: #cbd5e1;
+      line-height: 1.45;
+      font-size: 15px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+
+    .radar-tag {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tag-low {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.45);
+    }
+
+    .tag-watch {
+      background: rgba(250, 204, 21, 0.10);
+      border: 1px solid rgba(250, 204, 21, 0.45);
+    }
+
+    .tag-medium {
+      background: rgba(249, 115, 22, 0.12);
+      border: 1px solid rgba(249, 115, 22, 0.45);
+    }
+
+    .tag-high {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+    }
   </style>
 </head>
 <body>
@@ -222,6 +301,18 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Pump Radar</h2>
+    <div class="muted">
+      This scans a curated watchlist of pumpable skins and ranks the strongest current signals.
+    </div>
+
+    <button id="radarButton" class="secondary-button" onclick="runPumpRadar()" disabled>Run Pump Radar</button>
+
+    <div id="radarStatus" class="radar-status">Radar has not been run yet.</div>
+    <div id="radarList" class="radar-list"></div>
+  </div>
+
   <script>
     const input = document.getElementById("marketHashName");
     const dropdown = document.getElementById("dropdown");
@@ -229,11 +320,42 @@
     const pumpBox = document.getElementById("pumpBox");
     const datasetStatus = document.getElementById("datasetStatus");
     const searchButton = document.getElementById("searchButton");
+    const radarButton = document.getElementById("radarButton");
+    const radarStatus = document.getElementById("radarStatus");
+    const radarList = document.getElementById("radarList");
 
     let SKINS = [];
     let SKINS_READY = false;
     let currentMatches = [];
     let activeIndex = -1;
+
+    const PUMP_WATCHLIST = [
+      "AWP | Lightning Strike (Factory New)",
+      "AWP | Lightning Strike (Minimal Wear)",
+      "Desert Eagle | Blaze (Factory New)",
+      "Desert Eagle | Blaze (Minimal Wear)",
+      "M4A1-S | Blue Phosphor (Factory New)",
+      "M4A1-S | Blue Phosphor (Minimal Wear)",
+      "P250 | Franklin (Factory New)",
+      "Glock-18 | Reactor (Factory New)",
+      "Glock-18 | Reactor (Minimal Wear)",
+      "AK-47 | Fire Serpent (Factory New)",
+      "AK-47 | Fire Serpent (Minimal Wear)",
+      "AK-47 | Fire Serpent (Field-Tested)",
+      "AWP | Medusa (Factory New)",
+      "AWP | Medusa (Minimal Wear)",
+      "AWP | Medusa (Field-Tested)",
+      "USP-S | Kill Confirmed (Factory New)",
+      "USP-S | Kill Confirmed (Minimal Wear)",
+      "USP-S | Kill Confirmed (Field-Tested)",
+      "M4A4 | The Coalition (Factory New)",
+      "M4A4 | Daybreak (Factory New)",
+      "M4A1-S | Hot Rod (Factory New)",
+      "Glock-18 | Fade (Factory New)",
+      "P250 | Whiteout (Factory New)",
+      "AUG | Akihabara Accept (Factory New)",
+      "Desert Eagle | Emerald Jörmungandr (Factory New)"
+    ];
 
     async function loadSkinDatabase() {
       try {
@@ -251,6 +373,7 @@
         SKINS_READY = true;
         datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
         searchButton.disabled = false;
+        radarButton.disabled = false;
       } catch (err) {
         datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
       }
@@ -421,16 +544,20 @@
 
       let rating = "Stable";
       let className = "pump-low";
+      let tagClass = "tag-low";
 
       if (score >= 75) {
         rating = "High Pump Potential";
         className = "pump-high";
+        tagClass = "tag-high";
       } else if (score >= 50) {
         rating = "Pump Potential";
         className = "pump-medium";
+        tagClass = "tag-medium";
       } else if (score >= 25) {
         rating = "Watch";
         className = "pump-watch";
+        tagClass = "tag-watch";
       }
 
       let sub = "This is a simple signal based on Steam market data only.";
@@ -444,8 +571,10 @@
         score,
         rating,
         className,
+        tagClass,
         reasons,
-        sub
+        sub,
+        spread
       };
     }
 
@@ -464,6 +593,20 @@
       `;
     }
 
+    async function fetchSteamPrice(name) {
+      const params = new URLSearchParams({
+        market_hash_name: name,
+        currency: "1"
+      });
+
+      const res = await fetch(`/api/steam-price?${params.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+
+      const data = await res.json();
+      return data;
+    }
+
     async function searchSteamPrice(name) {
       summary.textContent = "Loading...";
 
@@ -479,17 +622,8 @@
         </ul>
       `;
 
-      const params = new URLSearchParams({
-        market_hash_name: name,
-        currency: "1"
-      });
-
       try {
-        const res = await fetch(`/api/steam-price?${params.toString()}`, {
-          headers: { Accept: "application/json" }
-        });
-
-        const data = await res.json();
+        const data = await fetchSteamPrice(name);
 
         summary.textContent =
 `Item: ${name}
@@ -516,6 +650,77 @@ Volume: ${data.volume || "N/A"}`;
           </ul>
         `;
       }
+    }
+
+    async function runPumpRadar() {
+      if (!SKINS_READY) {
+        radarStatus.textContent = "Skin database is still loading.";
+        return;
+      }
+
+      radarButton.disabled = true;
+      radarList.innerHTML = "";
+      radarStatus.textContent = `Scanning ${PUMP_WATCHLIST.length} watchlist skins...`;
+
+      const results = [];
+
+      for (let i = 0; i < PUMP_WATCHLIST.length; i++) {
+        const skin = PUMP_WATCHLIST[i];
+        radarStatus.textContent = `Scanning ${i + 1} / ${PUMP_WATCHLIST.length}\n${skin}`;
+
+        try {
+          const data = await fetchSteamPrice(skin);
+
+          const lowest = parseMoney(data.lowest_price);
+          const median = parseMoney(data.median_price);
+          const volume = parseVolume(data.volume);
+
+          const pump = buildPumpScore(lowest, median, volume);
+
+          results.push({
+            name: skin,
+            lowest: data.lowest_price || "N/A",
+            median: data.median_price || "N/A",
+            volume: data.volume || "N/A",
+            score: pump.score,
+            rating: pump.rating,
+            tagClass: pump.tagClass,
+            sub: pump.sub
+          });
+        } catch (err) {
+          results.push({
+            name: skin,
+            lowest: "N/A",
+            median: "N/A",
+            volume: "N/A",
+            score: 0,
+            rating: "Error",
+            tagClass: "tag-low",
+            sub: err.message
+          });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+
+      results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+      radarStatus.textContent = `Pump Radar complete. Top ${Math.min(25, results.length)} results shown.`;
+
+      radarList.innerHTML = results.slice(0, 25).map((item, index) => `
+        <div class="radar-item">
+          <div class="radar-rank">#${index + 1}</div>
+          <div class="radar-name">${item.name}</div>
+          <div class="radar-meta">Score: ${item.score} / 100
+Rating: ${item.rating}
+Lowest: ${item.lowest}
+Median: ${item.median}
+Volume: ${item.volume}</div>
+          <div class="radar-tag ${item.tagClass}">${item.sub}</div>
+        </div>
+      `).join("");
+
+      radarButton.disabled = false;
     }
 
     function manualSearch() {
