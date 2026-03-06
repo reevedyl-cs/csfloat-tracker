@@ -25,6 +25,7 @@
     h1 {
       margin: 0 0 12px 0;
       font-size: 40px;
+      line-height: 1.05;
     }
 
     .muted {
@@ -75,6 +76,7 @@
       border-bottom: 1px solid #1f2937;
       cursor: pointer;
       font-size: 16px;
+      line-height: 1.35;
     }
 
     .dropdown-item:last-child {
@@ -94,6 +96,35 @@
       word-break: break-word;
       font-size: 17px;
     }
+
+    .quick-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      margin-bottom: 14px;
+    }
+
+    .quick-buttons button {
+      margin-top: 0;
+      background: #334155;
+      font-size: 16px;
+      padding: 14px;
+    }
+
+    .quick-buttons button:active {
+      background: #475569;
+    }
+
+    @media (max-width: 760px) {
+      h1 {
+        font-size: 34px;
+      }
+
+      .quick-buttons {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -101,7 +132,14 @@
     <h1>Steam Market Tracker</h1>
 
     <div class="muted">
-      Start typing something close, like <b>bla</b>, <b>lightning</b>, or <b>fire serp</b>.
+      Type something close like <b>deag blaze</b>, <b>lightning fn</b>, <b>fire serp ft</b>, or <b>dragon lore bs</b>.
+    </div>
+
+    <div class="quick-buttons">
+      <button onclick="quickFill('deag blaze')">Deagle Blaze</button>
+      <button onclick="quickFill('lightning fn')">Lightning Strike FN</button>
+      <button onclick="quickFill('fire serp ft')">Fire Serpent FT</button>
+      <button onclick="quickFill('dragon lore ft')">Dragon Lore FT</button>
     </div>
 
     <div class="search-wrap">
@@ -117,7 +155,7 @@
       <div id="dropdown" class="dropdown" style="display:none;"></div>
     </div>
 
-    <button onclick="searchSteamPrice()">Search</button>
+    <button onclick="manualSearch()">Search</button>
 
     <div id="summary" class="summary">No search yet.</div>
   </div>
@@ -128,19 +166,94 @@
     const dropdown = document.getElementById("dropdown");
     const summary = document.getElementById("summary");
 
+    const aliasMap = {
+      "deag blaze": "Desert Eagle | Blaze (Factory New)",
+      "deagle blaze": "Desert Eagle | Blaze (Factory New)",
+      "blaze fn": "Desert Eagle | Blaze (Factory New)",
+      "blaze mw": "Desert Eagle | Blaze (Minimal Wear)",
+
+      "lightning": "AWP | Lightning Strike (Factory New)",
+      "lightning fn": "AWP | Lightning Strike (Factory New)",
+      "lightning mw": "AWP | Lightning Strike (Minimal Wear)",
+      "lightning ft": "AWP | Lightning Strike (Field-Tested)",
+      "awp lightning": "AWP | Lightning Strike (Factory New)",
+      "awp lightning fn": "AWP | Lightning Strike (Factory New)",
+
+      "fire serp": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serpent": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serp fn": "AK-47 | Fire Serpent (Factory New)",
+      "fire serp mw": "AK-47 | Fire Serpent (Minimal Wear)",
+      "fire serp ft": "AK-47 | Fire Serpent (Field-Tested)",
+      "fire serp ww": "AK-47 | Fire Serpent (Well-Worn)",
+      "fire serp bs": "AK-47 | Fire Serpent (Battle-Scarred)",
+
+      "blue phosphor": "M4A1-S | Blue Phosphor (Factory New)",
+      "blue phosphor fn": "M4A1-S | Blue Phosphor (Factory New)",
+      "blue phosphor mw": "M4A1-S | Blue Phosphor (Minimal Wear)",
+
+      "dragon lore": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore fn": "AWP | Dragon Lore (Factory New)",
+      "dragon lore mw": "AWP | Dragon Lore (Minimal Wear)",
+      "dragon lore ft": "AWP | Dragon Lore (Field-Tested)",
+      "dragon lore ww": "AWP | Dragon Lore (Well-Worn)",
+      "dragon lore bs": "AWP | Dragon Lore (Battle-Scarred)"
+    };
+
     function normalize(text) {
       return text
         .toLowerCase()
-        .replace(/[|()-]/g, " ")
+        .replace(/[|()\-]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
 
-    function getMatches(query) {
-      const q = normalize(query);
-      if (!q || q.length < 2) return [];
+    function tokenize(text) {
+      return normalize(text).split(" ").filter(Boolean);
+    }
 
-      return SKINS.filter(item => normalize(item).includes(q)).slice(0, 8);
+    function getAliasMatch(query) {
+      const q = normalize(query);
+      return aliasMap[q] || null;
+    }
+
+    function scoreItem(query, item) {
+      const qTokens = tokenize(query);
+      const itemNorm = normalize(item);
+
+      if (!qTokens.length) return 0;
+
+      let score = 0;
+
+      for (const token of qTokens) {
+        if (itemNorm.includes(token)) {
+          score += token.length >= 3 ? 20 : 10;
+        } else {
+          return 0;
+        }
+      }
+
+      if (itemNorm.startsWith(normalize(query))) score += 25;
+      if (itemNorm.includes(normalize(query))) score += 15;
+
+      return score;
+    }
+
+    function getMatches(query) {
+      const q = query.trim();
+      if (q.length < 2) return [];
+
+      const alias = getAliasMatch(q);
+      if (alias) {
+        const matches = [alias, ...SKINS.filter(x => x !== alias && scoreItem(q, x) > 0)];
+        return matches.slice(0, 8);
+      }
+
+      return SKINS
+        .map(item => ({ item, score: scoreItem(q, item) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.item)
+        .slice(0, 8);
     }
 
     function renderDropdown(matches) {
@@ -157,36 +270,13 @@
       dropdown.style.display = "block";
     }
 
-    dropdown.addEventListener("click", (e) => {
-      const row = e.target.closest(".dropdown-item");
-      if (!row) return;
-      const item = row.getAttribute("data-item");
-      input.value = item;
-      dropdown.style.display = "none";
-      dropdown.innerHTML = "";
-    });
-
-    input.addEventListener("input", () => {
-      renderDropdown(getMatches(input.value));
-    });
-
-    input.addEventListener("focus", () => {
-      renderDropdown(getMatches(input.value));
-    });
-
-    async function searchSteamPrice() {
-      const marketHashName = input.value.trim();
-
-      if (!marketHashName) {
-        summary.textContent = "Please enter a skin name.";
-        return;
-      }
-
+    async function searchSteamPrice(exactName) {
       summary.textContent = "Loading...";
       dropdown.style.display = "none";
+      dropdown.innerHTML = "";
 
       const params = new URLSearchParams({
-        market_hash_name: marketHashName,
+        market_hash_name: exactName,
         currency: "1"
       });
 
@@ -211,7 +301,7 @@
         }
 
         summary.textContent =
-`Item: ${marketHashName}
+`Item: ${exactName}
 Success: ${data.success}
 Lowest price: ${data.lowest_price || "N/A"}
 Median price: ${data.median_price || "N/A"}
@@ -220,6 +310,64 @@ Volume: ${data.volume || "N/A"}`;
         summary.textContent = `Error: ${err.message}`;
       }
     }
+
+    function manualSearch() {
+      const typed = input.value.trim();
+      if (!typed) {
+        summary.textContent = "Please enter a skin name.";
+        return;
+      }
+
+      const alias = getAliasMatch(typed);
+      if (alias) {
+        input.value = alias;
+        searchSteamPrice(alias);
+        return;
+      }
+
+      const matches = getMatches(typed);
+      if (matches.length === 1) {
+        input.value = matches[0];
+        searchSteamPrice(matches[0]);
+        return;
+      }
+
+      if (matches.length > 1) {
+        renderDropdown(matches);
+        summary.textContent = "Tap one of the suggestions.";
+        return;
+      }
+
+      searchSteamPrice(typed);
+    }
+
+    function quickFill(text) {
+      input.value = text;
+      manualSearch();
+    }
+
+    dropdown.addEventListener("click", (e) => {
+      const row = e.target.closest(".dropdown-item");
+      if (!row) return;
+
+      const item = row.getAttribute("data-item");
+      input.value = item;
+      searchSteamPrice(item);
+    });
+
+    input.addEventListener("input", () => {
+      renderDropdown(getMatches(input.value));
+    });
+
+    input.addEventListener("focus", () => {
+      renderDropdown(getMatches(input.value));
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target) && e.target !== input) {
+        dropdown.style.display = "none";
+      }
+    });
   </script>
 </body>
 </html>
