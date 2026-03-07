@@ -24,17 +24,25 @@ app.get("/api/skins", async (req, res) => {
 
     const data = await response.json();
 
-    const names = data
-      .map(item => item.market_hash_name)
-      .filter(Boolean)
-      .filter(name => !name.includes("StatTrak"))
-      .filter(name => !name.includes("Souvenir"));
-
-    const uniqueNames = [...new Set(names)].sort((a, b) => a.localeCompare(b));
+    const cleaned = data
+      .filter(item => item && item.market_hash_name)
+      .filter(item => !item.market_hash_name.includes("StatTrak"))
+      .filter(item => !item.market_hash_name.includes("Souvenir"))
+      .map(item => ({
+        market_hash_name: item.market_hash_name,
+        collection: item.collection?.name || item.collection || "Unknown Collection",
+        weapon: item.weapon?.name || item.weapon || "",
+        category: item.category?.name || item.category || "",
+        rarity: item.rarity?.name || item.rarity || "",
+        wear_name: item.wear?.name || item.wear_name || inferWear(item.market_hash_name),
+        paint_index: item.paint_index ?? null,
+        min_float: item.min_float ?? null,
+        max_float: item.max_float ?? null
+      }));
 
     res.json({
-      count: uniqueNames.length,
-      skins: uniqueNames
+      count: cleaned.length,
+      skins: cleaned
     });
   } catch (err) {
     res.status(500).json({
@@ -42,6 +50,76 @@ app.get("/api/skins", async (req, res) => {
     });
   }
 });
+
+function inferWear(name) {
+  const wears = [
+    "Factory New",
+    "Minimal Wear",
+    "Field-Tested",
+    "Well-Worn",
+    "Battle-Scarred"
+  ];
+
+  for (const wear of wears) {
+    if (name.includes(`(${wear})`)) return wear;
+  }
+
+  return "N/A";
+}
+
+async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
+  const params = new URLSearchParams({
+    appid: "730",
+    market_hash_name,
+    currency
+  });
+
+  const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Accept": "application/json",
+          "Referer": "https://steamcommunity.com/market/"
+        }
+      });
+
+      const text = await response.text();
+
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+
+      if (data && typeof data === "object") {
+        return data;
+      }
+
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } else {
+        return {
+          success: false,
+          error: "Steam returned invalid or empty JSON",
+          raw: text.slice(0, 300)
+        };
+      }
+    } catch (err) {
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } else {
+        return {
+          success: false,
+          error: err.message
+        };
+      }
+    }
+  }
+}
 
 app.get("/api/steam-price", async (req, res) => {
   try {
@@ -53,26 +131,11 @@ app.get("/api/steam-price", async (req, res) => {
       });
     }
 
-    const params = new URLSearchParams({
-      appid: "730",
-      market_hash_name,
-      currency
-    });
-
-    const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
-
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
-      }
-    });
-
-    const data = await response.json();
-
+    const data = await getSteamPriceWithRetry(market_hash_name, currency);
     res.json(data);
   } catch (err) {
     res.status(500).json({
+      success: false,
       error: err.message
     });
   }
