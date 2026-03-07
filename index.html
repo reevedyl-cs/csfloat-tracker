@@ -1,925 +1,350 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Collection Scanner</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #f8fafc;
-      margin: 0;
-      padding: 24px;
-    }
+<meta charset="UTF-8">
+<title>Steam Market Collection Scanner</title>
 
-    .card {
-      max-width: 960px;
-      margin: 0 auto 20px auto;
-      background: #1e293b;
-      border-radius: 18px;
-      padding: 24px;
-      box-sizing: border-box;
-    }
+<style>
 
-    h1 {
-      margin: 0 0 12px 0;
-      font-size: 40px;
-      line-height: 1.05;
-    }
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+padding:20px;
+}
 
-    h2 {
-      margin: 0 0 12px 0;
-      font-size: 28px;
-      line-height: 1.1;
-    }
+.card{
+background:#1e293b;
+padding:20px;
+border-radius:12px;
+margin-bottom:20px;
+}
 
-    .muted {
-      color: #94a3b8;
-      margin-bottom: 16px;
-      line-height: 1.45;
-      font-size: 15px;
-    }
+button{
+padding:12px;
+border-radius:8px;
+border:none;
+background:#2563eb;
+color:white;
+cursor:pointer;
+margin:6px;
+}
 
-    .search-wrap {
-      position: relative;
-      margin-bottom: 12px;
-    }
+button:hover{
+background:#1d4ed8;
+}
 
-    input, button {
-      border: none;
-      border-radius: 14px;
-      padding: 16px;
-      font-size: 18px;
-      width: 100%;
-      box-sizing: border-box;
-    }
+.scanner-item{
+background:#0b132b;
+padding:16px;
+border-radius:10px;
+margin-bottom:10px;
+}
 
-    input {
-      background: #475569;
-      color: white;
-    }
+.scanner-name{
+font-size:18px;
+font-weight:bold;
+margin-bottom:6px;
+}
 
-    input::placeholder {
-      color: #cbd5e1;
-    }
+.scanner-meta{
+color:#cbd5e1;
+white-space:pre-line;
+}
 
-    button {
-      background: #2563eb;
-      color: white;
-      cursor: pointer;
-      margin-top: 12px;
-    }
+.score-high{color:#ef4444}
+.score-mid{color:#f97316}
+.score-watch{color:#facc15}
+.score-low{color:#22c55e}
 
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .secondary-button {
-      background: #334155;
-      margin-top: 0;
-    }
-
-    .dropdown {
-      margin-top: 8px;
-      background: #0b132b;
-      border: 1px solid #334155;
-      border-radius: 14px;
-      overflow: hidden;
-      max-height: 320px;
-      overflow-y: auto;
-    }
-
-    .dropdown-item {
-      padding: 14px 16px;
-      border-bottom: 1px solid #1f2937;
-      cursor: pointer;
-      line-height: 1.35;
-      font-size: 16px;
-    }
-
-    .dropdown-item:last-child {
-      border-bottom: none;
-    }
-
-    .dropdown-item.active,
-    .dropdown-item:active {
-      background: #1f2937;
-    }
-
-    .summary {
-      margin-top: 16px;
-      background: #0b132b;
-      border-radius: 14px;
-      padding: 18px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 17px;
-      line-height: 1.4;
-    }
-
-    .pump-wrap {
-      margin-top: 20px;
-      background: #0b132b;
-      border-radius: 14px;
-      padding: 16px;
-    }
-
-    .section-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-
-    .pump-box {
-      border-radius: 14px;
-      padding: 18px;
-      line-height: 1.5;
-      font-size: 16px;
-    }
-
-    .pump-low {
-      background: rgba(34, 197, 94, 0.12);
-      border: 1px solid rgba(34, 197, 94, 0.45);
-    }
-
-    .pump-watch {
-      background: rgba(250, 204, 21, 0.10);
-      border: 1px solid rgba(250, 204, 21, 0.45);
-    }
-
-    .pump-medium {
-      background: rgba(249, 115, 22, 0.12);
-      border: 1px solid rgba(249, 115, 22, 0.45);
-    }
-
-    .pump-high {
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.45);
-    }
-
-    .pump-score {
-      font-size: 28px;
-      font-weight: 800;
-      margin-bottom: 6px;
-    }
-
-    .pump-rating {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-
-    .pump-sub {
-      color: #cbd5e1;
-      margin-bottom: 12px;
-    }
-
-    .pump-list {
-      margin: 0;
-      padding-left: 18px;
-    }
-
-    .pump-list li {
-      margin-bottom: 8px;
-    }
-
-    .small-note {
-      margin-top: 12px;
-      color: #94a3b8;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-
-    .scanner-status {
-      color: #cbd5e1;
-      margin-bottom: 14px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .scanner-list {
-      display: grid;
-      gap: 12px;
-    }
-
-    .scanner-item {
-      background: #111827;
-      border-radius: 14px;
-      padding: 16px;
-      border: 1px solid #1f2937;
-    }
-
-    .scanner-rank {
-      font-size: 13px;
-      color: #94a3b8;
-      margin-bottom: 6px;
-    }
-
-    .scanner-name {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      line-height: 1.35;
-    }
-
-    .scanner-meta {
-      color: #cbd5e1;
-      line-height: 1.45;
-      font-size: 15px;
-      margin-bottom: 10px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .scanner-tag {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .tag-low {
-      background: rgba(34, 197, 94, 0.12);
-      border: 1px solid rgba(34, 197, 94, 0.45);
-    }
-
-    .tag-watch {
-      background: rgba(250, 204, 21, 0.10);
-      border: 1px solid rgba(250, 204, 21, 0.45);
-    }
-
-    .tag-medium {
-      background: rgba(249, 115, 22, 0.12);
-      border: 1px solid rgba(249, 115, 22, 0.45);
-    }
-
-    .tag-high {
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.45);
-    }
-
-    .collection-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 12px;
-    }
-
-    @media (max-width: 700px) {
-      .collection-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+</style>
 </head>
+
+
 <body>
-  <div class="card">
-    <h1>Steam Collection Scanner</h1>
-
-    <div id="datasetStatus" class="muted">
-      Loading full skin database...
-    </div>
-
-    <div class="search-wrap">
-      <input
-        id="marketHashName"
-        type="text"
-        placeholder="Type a skin name..."
-        autocomplete="off"
-        autocorrect="off"
-        autocapitalize="none"
-        spellcheck="false"
-      />
-      <div id="dropdown" class="dropdown" style="display:none;"></div>
-    </div>
-
-    <button id="searchButton" onclick="manualSearch()" disabled>Search</button>
-
-    <div id="summary" class="summary">No search yet.</div>
-
-    <div class="pump-wrap">
-      <div class="section-title">Potential Price Pump</div>
-      <div id="pumpBox" class="pump-box pump-watch">
-        <div class="pump-score">-- / 100</div>
-        <div class="pump-rating">No item analyzed yet</div>
-        <div class="pump-sub">Search an item to generate a score.</div>
-        <ul class="pump-list">
-          <li>The score uses Steam lowest price, median price, and volume.</li>
-          <li>This is a live signal, not a guarantee.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Collection Scanners</h2>
-    <div id="collectionInfo" class="muted">
-      Building collection buttons from the loaded skin dataset...
-    </div>
-
-    <div id="collectionButtons" class="collection-grid"></div>
-
-    <div id="scannerStatus" class="scanner-status">Scanner has not been run yet.</div>
-    <div id="scannerList" class="scanner-list"></div>
-  </div>
-
-  <script>
-    const input = document.getElementById("marketHashName");
-    const dropdown = document.getElementById("dropdown");
-    const summary = document.getElementById("summary");
-    const pumpBox = document.getElementById("pumpBox");
-    const datasetStatus = document.getElementById("datasetStatus");
-    const searchButton = document.getElementById("searchButton");
-    const collectionInfo = document.getElementById("collectionInfo");
-    const collectionButtons = document.getElementById("collectionButtons");
-    const scannerStatus = document.getElementById("scannerStatus");
-    const scannerList = document.getElementById("scannerList");
-
-    let SKINS = [];
-    let SKINS_READY = false;
-    let currentMatches = [];
-    let activeIndex = -1;
-    let COLLECTION_MAP = {};
-    let activeScanButton = null;
-
-    const WEAR_PRIORITY = [
-      "Factory New",
-      "Minimal Wear",
-      "Field-Tested",
-      "Well-Worn",
-      "Battle-Scarred"
-    ];
-
-    async function loadSkinDatabase() {
-      try {
-        const res = await fetch("/api/skins", {
-          headers: { Accept: "application/json" }
-        });
-
-        const data = await res.json();
-
-        if (!res.ok || !data || !Array.isArray(data.skins)) {
-          throw new Error(data?.error || "Could not load skins");
-        }
-
-        SKINS = data.skins;
-        buildCollectionMap();
-        renderCollectionButtons();
-
-        SKINS_READY = true;
-        datasetStatus.textContent = `Loaded full skin database (${data.count} wear variants).`;
-        searchButton.disabled = false;
-      } catch (err) {
-        datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
-      }
-    }
-
-    function buildCollectionMap() {
-      COLLECTION_MAP = {};
-
-      for (const skin of SKINS) {
-        const collection = skin.collection || "Unknown Collection";
-        if (collection === "Unknown Collection") continue;
-
-        const baseName = getBaseName(skin.market_hash_name);
-
-        if (!COLLECTION_MAP[collection]) {
-          COLLECTION_MAP[collection] = {};
-        }
-
-        if (!COLLECTION_MAP[collection][baseName]) {
-          COLLECTION_MAP[collection][baseName] = [];
-        }
-
-        COLLECTION_MAP[collection][baseName].push(skin);
-      }
-    }
-
-    function renderCollectionButtons() {
-      const collectionNames = Object.keys(COLLECTION_MAP).sort((a, b) => a.localeCompare(b));
-
-      collectionInfo.textContent = `Found ${collectionNames.length} collections from the skin dataset. Buttons below are auto-generated from that data.`;
-
-      collectionButtons.innerHTML = collectionNames.map(name => {
-        const baseCount = Object.keys(COLLECTION_MAP[name]).length;
-        return `
-          <button class="secondary-button" data-collection="${escapeAttr(name)}" onclick="scanCollectionByName('${escapeJs(name)}')">
-            ${escapeHtml(name)} (${baseCount})
-          </button>
-        `;
-      }).join("");
-    }
-
-    function normalize(text) {
-      return text
-        .toLowerCase()
-        .replace(/[|()\-™]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    function tokenize(text) {
-      return normalize(text).split(" ").filter(Boolean);
-    }
-
-    function getBaseName(name) {
-      return name.replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/, "").trim();
-    }
-
-    function scoreItem(query, item) {
-      const q = normalize(query);
-      const qTokens = tokenize(query);
-      const itemNorm = normalize(item);
-
-      if (!qTokens.length) return 0;
-
-      let score = 0;
-
-      if (itemNorm === q) score += 900;
-      if (itemNorm.startsWith(q)) score += 300;
-      if (itemNorm.includes(q)) score += 150;
-
-      for (const token of qTokens) {
-        if (!itemNorm.includes(token)) return 0;
-        score += itemNorm.startsWith(token) ? 60 : 25;
-        if (token.length >= 4) score += 10;
-      }
-
-      return score;
-    }
-
-    function getMatches(query) {
-      const q = query.trim();
-      if (q.length < 2 || !SKINS_READY) return [];
-
-      return SKINS
-        .map(item => ({ item: item.market_hash_name, score: scoreItem(q, item.market_hash_name) }))
-        .filter(x => x.score > 0)
-        .sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
-        .map(x => x.item)
-        .slice(0, 12);
-    }
-
-    function renderDropdown(matches) {
-      currentMatches = matches;
-      activeIndex = matches.length ? 0 : -1;
-
-      if (!matches.length) {
-        dropdown.style.display = "none";
-        dropdown.innerHTML = "";
-        return;
-      }
-
-      dropdown.innerHTML = matches.map((item, index) => `
-        <div class="dropdown-item ${index === activeIndex ? "active" : ""}" data-item="${escapeAttr(item)}">
-          ${escapeHtml(item)}
-        </div>
-      `).join("");
-
-      dropdown.style.display = "block";
-    }
-
-    function refreshActiveRow() {
-      const rows = dropdown.querySelectorAll(".dropdown-item");
-      rows.forEach((row, index) => {
-        row.classList.toggle("active", index === activeIndex);
-      });
-    }
-
-    function chooseItem(item) {
-      input.value = item;
-      dropdown.style.display = "none";
-      dropdown.innerHTML = "";
-      currentMatches = [];
-      activeIndex = -1;
-      searchSteamPrice(item);
-    }
-
-    function parseMoney(value) {
-      if (typeof value === "number") return value;
-      if (typeof value !== "string") return NaN;
-
-      let cleaned = value.replace(/[^0-9.,-]/g, "");
-
-      if (cleaned.includes(",") && cleaned.includes(".")) {
-        cleaned = cleaned.replace(/,/g, "");
-      } else if (cleaned.includes(",") && !cleaned.includes(".")) {
-        cleaned = cleaned.replace(",", ".");
-      }
-
-      return parseFloat(cleaned);
-    }
-
-    function parseVolume(value) {
-      if (typeof value === "number") return value;
-      if (typeof value !== "string") return NaN;
-      const cleaned = value.replace(/[^0-9]/g, "");
-      return parseInt(cleaned || "0", 10);
-    }
-
-    function buildPumpScore(lowest, median, volume) {
-      let score = 0;
-      const reasons = [];
-
-      const spread = Number.isFinite(lowest) && Number.isFinite(median) && median > 0
-        ? ((lowest - median) / median) * 100
-        : null;
-
-      if (Number.isFinite(volume)) {
-        if (volume <= 2) {
-          score += 35;
-          reasons.push("Very low daily volume makes the market easier to move.");
-        } else if (volume <= 5) {
-          score += 25;
-          reasons.push("Low daily volume suggests thin liquidity.");
-        } else if (volume <= 10) {
-          score += 15;
-          reasons.push("Moderate volume gives some pump potential.");
-        } else if (volume >= 40) {
-          reasons.push("High daily volume makes this market harder to push quickly.");
-        }
-      } else {
-        reasons.push("Volume could not be read, so the score is less certain.");
-      }
-
-      if (spread !== null) {
-        if (spread >= 3) {
-          score += 30;
-          reasons.push("Lowest price is far above median, which suggests the floor has already been pushed up.");
-        } else if (spread >= 1) {
-          score += 18;
-          reasons.push("Lowest price is above median, showing some floor pressure.");
-        } else if (spread <= -2) {
-          score -= 10;
-          reasons.push("Lowest price is below median, which weakens immediate pump pressure.");
-        } else {
-          reasons.push("Lowest price is close to median, so the market looks more balanced.");
-        }
-      } else {
-        reasons.push("Median price was unavailable, so floor pressure could not be scored fully.");
-      }
-
-      if (Number.isFinite(lowest)) {
-        if (lowest >= 1000) {
-          score += 12;
-          reasons.push("High-priced, niche skins can move sharply when supply is thin.");
-        } else if (lowest >= 300) {
-          score += 6;
-          reasons.push("Mid-to-high priced skins can pump harder than common liquid skins.");
-        }
-      }
-
-      score = Math.max(0, Math.min(100, Math.round(score)));
-
-      let rating = "Stable";
-      let className = "pump-low";
-      let tagClass = "tag-low";
-
-      if (score >= 75) {
-        rating = "High Pump Potential";
-        className = "pump-high";
-        tagClass = "tag-high";
-      } else if (score >= 50) {
-        rating = "Pump Potential";
-        className = "pump-medium";
-        tagClass = "tag-medium";
-      } else if (score >= 25) {
-        rating = "Watch";
-        className = "pump-watch";
-        tagClass = "tag-watch";
-      }
-
-      let sub = "This is a simple signal based on Steam market data only.";
-      if (spread !== null && Number.isFinite(volume)) {
-        sub = `Spread: ${spread.toFixed(2)}% | Volume: ${volume}`;
-      } else if (Number.isFinite(volume)) {
-        sub = `Volume: ${volume}`;
-      }
-
-      return {
-        score,
-        rating,
-        className,
-        tagClass,
-        reasons,
-        sub
-      };
-    }
-
-    function renderPumpScore(result) {
-      pumpBox.className = `pump-box ${result.className}`;
-      pumpBox.innerHTML = `
-        <div class="pump-score">${result.score} / 100</div>
-        <div class="pump-rating">${result.rating}</div>
-        <div class="pump-sub">${result.sub}</div>
-        <ul class="pump-list">
-          ${result.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}
-        </ul>
-        <div class="small-note">
-          This score is a market signal, not a prediction guarantee. It does not include listing depth, cash-market prices, or external hype.
-        </div>
-      `;
-    }
-
-    async function fetchSteamPrice(name) {
-      const params = new URLSearchParams({
-        market_hash_name: name,
-        currency: "1"
-      });
-
-      async function tryFetch() {
-        const res = await fetch(`/api/steam-price?${params.toString()}`, {
-          headers: { Accept: "application/json" }
-        });
-
-        let data = null;
-
-        try {
-          data = await res.json();
-        } catch {
-          return null;
-        }
-
-        if (!data || typeof data !== "object") return null;
-        return data;
-      }
-
-      let data = await tryFetch();
-
-      if (!data) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        data = await tryFetch();
-      }
-
-      if (!data) {
-        return {
-          success: false,
-          lowest_price: null,
-          median_price: null,
-          volume: null,
-          error: "Steam returned invalid response"
-        };
-      }
-
-      return data;
-    }
-
-    async function searchSteamPrice(name) {
-      summary.textContent = "Loading...";
-
-      pumpBox.className = "pump-box pump-watch";
-      pumpBox.innerHTML = `
-        <div class="pump-score">-- / 100</div>
-        <div class="pump-rating">Calculating...</div>
-        <div class="pump-sub">Reading Steam market data.</div>
-        <ul class="pump-list">
-          <li>Checking lowest price</li>
-          <li>Checking median price</li>
-          <li>Checking volume</li>
-        </ul>
-      `;
-
-      try {
-        const data = await fetchSteamPrice(name);
-
-        summary.textContent =
-`Item: ${name}
-Success: ${data.success}
-Lowest price: ${data.lowest_price || "N/A"}
-Median price: ${data.median_price || "N/A"}
-Volume: ${data.volume || "N/A"}`;
-
-        const lowest = parseMoney(data?.lowest_price);
-        const median = parseMoney(data?.median_price);
-        const volume = parseVolume(data?.volume);
-
-        const result = buildPumpScore(lowest, median, volume);
-        renderPumpScore(result);
-      } catch (err) {
-        summary.textContent = `Error: ${err.message}`;
-      }
-    }
-
-    function getBestWearVariant(variants) {
-      for (const wear of WEAR_PRIORITY) {
-        const match = variants.find(v => v.wear_name === wear);
-        if (match) {
-          return {
-            market_hash_name: match.market_hash_name,
-            wear_label: wear
-          };
-        }
-      }
-
-      return {
-        market_hash_name: variants[0].market_hash_name,
-        wear_label: variants[0].wear_name || "N/A"
-      };
-    }
-
-    function getCollectionPool(collectionName) {
-      if (!SKINS_READY || !COLLECTION_MAP[collectionName]) return [];
-
-      const result = [];
-
-      for (const baseName of Object.keys(COLLECTION_MAP[collectionName])) {
-        const variants = COLLECTION_MAP[collectionName][baseName];
-        result.push(getBestWearVariant(variants));
-      }
-
-      return result.sort((a, b) => a.market_hash_name.localeCompare(b.market_hash_name));
-    }
-
-    function disableCollectionButtons(disabled) {
-      const buttons = collectionButtons.querySelectorAll("button");
-      buttons.forEach(button => {
-        button.disabled = disabled;
-      });
-    }
-
-    async function scanCollectionByName(collectionName) {
-      if (!SKINS_READY) {
-        scannerStatus.textContent = "Skin database is still loading.";
-        return;
-      }
-
-      const pool = getCollectionPool(collectionName);
-
-      if (!pool.length) {
-        scannerStatus.textContent = `No valid collection skins were found for ${collectionName}.`;
-        return;
-      }
-
-      disableCollectionButtons(true);
-      scannerList.innerHTML = "";
-      scannerStatus.textContent = `Preparing to scan ${pool.length} skins from ${collectionName}...`;
-
-      const results = [];
-
-      for (let i = 0; i < pool.length; i++) {
-        const skin = pool[i];
-
-        scannerStatus.textContent =
-`Scanning ${collectionName}
-${i + 1} / ${pool.length}
-
-Current:
-${skin.market_hash_name}`;
-
-        try {
-          const data = await fetchSteamPrice(skin.market_hash_name);
-
-          const lowest = parseMoney(data?.lowest_price);
-          const median = parseMoney(data?.median_price);
-          const volume = parseVolume(data?.volume);
-          const pump = buildPumpScore(lowest, median, volume);
-
-          results.push({
-            name: skin.market_hash_name,
-            wear: skin.wear_label,
-            lowest: data?.lowest_price || "N/A",
-            median: data?.median_price || "N/A",
-            volume: data?.volume || "N/A",
-            score: data?.error ? 0 : pump.score,
-            rating: data?.error ? "No Market Data" : pump.rating,
-            tagClass: data?.error ? "tag-low" : pump.tagClass,
-            sub: data?.error ? data.error : pump.sub
-          });
-        } catch (err) {
-          results.push({
-            name: skin.market_hash_name,
-            wear: skin.wear_label,
-            lowest: "N/A",
-            median: "N/A",
-            volume: "N/A",
-            score: 0,
-            rating: "Error",
-            tagClass: "tag-low",
-            sub: err.message
-          });
-        }
-
-        results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-
-        scannerList.innerHTML = results.map((item, index) => `
-          <div class="scanner-item">
-            <div class="scanner-rank">#${index + 1}</div>
-            <div class="scanner-name">${escapeHtml(item.name)}</div>
-            <div class="scanner-meta">Wear: ${escapeHtml(item.wear)}
-Score: ${item.score} / 100
-Rating: ${escapeHtml(item.rating)}
-Lowest: ${escapeHtml(item.lowest)}
-Median: ${escapeHtml(item.median)}
-Volume: ${escapeHtml(item.volume)}</div>
-            <div class="scanner-tag ${item.tagClass}">${escapeHtml(item.sub)}</div>
-          </div>
-        `).join("");
-
-        await new Promise(resolve => setTimeout(resolve, 3500 + Math.random() * 1000));
-      }
-
-      scannerStatus.textContent =
-`${collectionName} scan complete.
-Scanned: ${pool.length}
-Showing all results sorted by score.`;
-
-      disableCollectionButtons(false);
-    }
-
-    function manualSearch() {
-      if (!SKINS_READY) {
-        summary.textContent = "Skin database is still loading.";
-        return;
-      }
-
-      const typed = input.value.trim();
-
-      if (!typed) {
-        summary.textContent = "Enter a skin name.";
-        return;
-      }
-
-      const matches = getMatches(typed);
-
-      if (matches.length) {
-        chooseItem(matches[0]);
-        return;
-      }
-
-      searchSteamPrice(typed);
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
-
-    function escapeAttr(str) {
-      return escapeHtml(str);
-    }
-
-    function escapeJs(str) {
-      return String(str)
-        .replaceAll("\\", "\\\\")
-        .replaceAll("'", "\\'");
-    }
-
-    input.addEventListener("input", () => {
-      renderDropdown(getMatches(input.value));
-    });
-
-    input.addEventListener("focus", () => {
-      renderDropdown(getMatches(input.value));
-    });
-
-    input.addEventListener("keydown", (e) => {
-      if (dropdown.style.display === "none" || !currentMatches.length) {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          manualSearch();
-        }
-        return;
-      }
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        activeIndex = (activeIndex + 1) % currentMatches.length;
-        refreshActiveRow();
-      }
-
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        activeIndex = (activeIndex - 1 + currentMatches.length) % currentMatches.length;
-        refreshActiveRow();
-      }
-
-      if (e.key === "Enter") {
-        e.preventDefault();
-        chooseItem(currentMatches[activeIndex >= 0 ? activeIndex : 0]);
-      }
-    });
-
-    dropdown.addEventListener("click", (e) => {
-      const row = e.target.closest(".dropdown-item");
-      if (!row) return;
-      chooseItem(row.getAttribute("data-item"));
-    });
-
-    document.addEventListener("click", (e) => {
-      if (!dropdown.contains(e.target) && e.target !== input) {
-        dropdown.style.display = "none";
-      }
-    });
-
-    loadSkinDatabase();
-  </script>
+
+<div class="card">
+
+<h2>Steam Collection Scanner</h2>
+
+<div id="status">
+Loading skin database...
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h3>Collection Scan</h3>
+
+<div id="collectionButtons"></div>
+
+</div>
+
+
+<div class="card">
+
+<h3>Scanner Results</h3>
+
+<div id="results"></div>
+
+</div>
+
+
+
+<script>
+
+let SKINS=[]
+let COLLECTIONS={}
+
+function baseName(name){
+return name.replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)/,"").trim()
+}
+
+function bestWear(list){
+
+const order=[
+"Factory New",
+"Minimal Wear",
+"Field-Tested",
+"Well-Worn",
+"Battle-Scarred"
+]
+
+for(let w of order){
+
+let found=list.find(x=>x.wear_name===w)
+
+if(found) return found
+}
+
+return list[0]
+
+}
+
+
+async function loadSkins(){
+
+let res=await fetch("/api/skins")
+let data=await res.json()
+
+SKINS=data.skins
+
+for(let s of SKINS){
+
+let col=s.collection
+
+if(!COLLECTIONS[col]) COLLECTIONS[col]={}
+
+let base=baseName(s.market_hash_name)
+
+if(!COLLECTIONS[col][base]) COLLECTIONS[col][base]=[]
+
+COLLECTIONS[col][base].push(s)
+
+}
+
+renderCollections()
+
+document.getElementById("status").innerText=
+"Loaded "+SKINS.length+" skins"
+
+}
+
+function renderCollections(){
+
+let div=document.getElementById("collectionButtons")
+
+let html=""
+
+Object.keys(COLLECTIONS)
+.sort()
+.forEach(c=>{
+
+let count=Object.keys(COLLECTIONS[c]).length
+
+html+=`<button onclick="scanCollection('${c}')">${c} (${count})</button>`
+
+})
+
+div.innerHTML=html
+
+}
+
+
+
+async function steamPrice(name){
+
+let url="/api/steam-price?market_hash_name="+encodeURIComponent(name)
+
+let r=await fetch(url)
+
+return r.json()
+
+}
+
+async function steamHistory(name){
+
+let url="/api/steam-history?market_hash_name="+encodeURIComponent(name)
+
+let r=await fetch(url)
+
+return r.json()
+
+}
+
+
+
+function num(x){
+
+if(!x) return NaN
+
+return parseFloat(
+x.replace(/[^0-9.,]/g,"")
+.replace(",",".")
+)
+
+}
+
+
+function score(price,history){
+
+let lowest=num(price.lowest_price)
+
+let median=history.median_7d || num(price.median_price)
+
+let sales=history.sales_7d || 0
+
+if(!lowest || !median) return null
+
+let premium=(lowest-median)/median*100
+
+let score=0
+
+if(premium>40) score+=40
+else if(premium>20) score+=25
+else if(premium>10) score+=15
+
+if(sales<=2) score+=30
+else if(sales<=5) score+=20
+else if(sales<=10) score+=10
+
+return Math.min(100,Math.round(score))
+
+}
+
+
+
+function scoreClass(score){
+
+if(score===null) return "score-low"
+
+if(score>=70) return "score-high"
+if(score>=45) return "score-mid"
+if(score>=25) return "score-watch"
+
+return "score-low"
+
+}
+
+
+
+async function scanCollection(collection){
+
+let resultsDiv=document.getElementById("results")
+
+resultsDiv.innerHTML="Scanning "+collection+"..."
+
+let bases=Object.keys(COLLECTIONS[collection])
+
+let list=[]
+
+for(let i=0;i<bases.length;i++){
+
+let variants=COLLECTIONS[collection][bases[i]]
+
+let best=bestWear(variants)
+
+let name=best.market_hash_name
+
+document.getElementById("status").innerText=
+`Scanning ${collection} ${i+1}/${bases.length}`
+
+try{
+
+let price=await steamPrice(name)
+
+let history=await steamHistory(name)
+
+let s=score(price,history)
+
+list.push({
+name,
+wear:best.wear_name,
+lowest:price.lowest_price,
+median:history.median_7d,
+sales:history.sales_7d,
+score:s
+})
+
+}catch(e){
+
+list.push({
+name,
+wear:best.wear_name,
+score:null
+})
+
+}
+
+await new Promise(r=>setTimeout(r,4200))
+
+}
+
+
+list.sort((a,b)=>{
+
+let A=a.score ?? -1
+let B=b.score ?? -1
+
+return B-A
+
+})
+
+
+resultsDiv.innerHTML=list.map((x,i)=>`
+
+<div class="scanner-item">
+
+<div class="scanner-name">${i+1}. ${x.name}</div>
+
+<div class="scanner-meta">
+
+Wear: ${x.wear}
+
+Lowest: ${x.lowest || "N/A"}
+
+7d Median: ${x.median ? "$"+x.median.toFixed(2) : "N/A"}
+
+7d Sales: ${x.sales ?? "N/A"}
+
+Score: <span class="${scoreClass(x.score)}">${x.score ?? "--"}/100</span>
+
+</div>
+
+</div>
+
+`).join("")
+
+}
+
+
+
+loadSkins()
+
+</script>
+
+
 </body>
 </html>
