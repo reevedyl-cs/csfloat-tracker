@@ -13,13 +13,6 @@ const WEARS = [
   "Battle-Scarred"
 ];
 
-function inferWear(name = "") {
-  for (const wear of WEARS) {
-    if (name.includes(`(${wear})`)) return wear;
-  }
-  return "N/A";
-}
-
 function getCollectionName(item) {
   if (!item) return "Unknown Collection";
 
@@ -44,6 +37,24 @@ function getCollectionName(item) {
   }
 
   return "Unknown Collection";
+}
+
+function buildMarketHashName(item, wearName) {
+  const weaponName =
+    item.weapon?.name ||
+    item.weapon_name ||
+    item.weapon ||
+    "";
+
+  const skinName =
+    item.name ||
+    item.skin_name ||
+    item.finish ||
+    "";
+
+  if (!weaponName || !skinName || !wearName) return null;
+
+  return `${weaponName} | ${skinName} (${wearName})`;
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -72,45 +83,53 @@ app.get("/api/skins", async (req, res) => {
       });
     }
 
-    const skins = data
-      .filter(item => item && (item.market_hash_name || item.name))
-      .flatMap(item => {
-        const collection = getCollectionName(item);
+    const skins = [];
 
-        const baseName =
-          item.market_hash_name ||
-          item.name ||
-          "";
+    for (const item of data) {
+      if (!item) continue;
 
-        const wearBlocks = Array.isArray(item.wears) && item.wears.length > 0
-          ? item.wears
-          : [{ name: inferWear(baseName), market_hash_name: baseName }];
+      const collection = getCollectionName(item);
 
-        return wearBlocks
-          .map(wear => {
-            const marketHashName =
-              wear.market_hash_name ||
-              wear.marketHashName ||
-              wear.name ||
-              baseName;
+      if (collection === "Unknown Collection") continue;
 
-            const wearName =
-              wear.name ||
-              wear.wear_name ||
-              inferWear(marketHashName);
+      const wearBlocks = Array.isArray(item.wears) ? item.wears : [];
 
-            return {
-              market_hash_name: marketHashName,
-              collection,
-              wear_name: wearName
-            };
-          })
-          .filter(skin =>
-            skin.market_hash_name &&
-            !skin.market_hash_name.includes("StatTrak") &&
-            !skin.market_hash_name.includes("Souvenir")
-          );
-      });
+      if (wearBlocks.length > 0) {
+        for (const wear of wearBlocks) {
+          const wearName =
+            wear?.name ||
+            wear?.wear_name ||
+            (typeof wear === "string" ? wear : null);
+
+          if (!wearName) continue;
+          if (!WEARS.includes(wearName)) continue;
+
+          const marketHashName = buildMarketHashName(item, wearName);
+          if (!marketHashName) continue;
+          if (marketHashName.includes("StatTrak")) continue;
+          if (marketHashName.includes("Souvenir")) continue;
+
+          skins.push({
+            market_hash_name: marketHashName,
+            collection,
+            wear_name: wearName
+          });
+        }
+      } else {
+        for (const wearName of WEARS) {
+          const marketHashName = buildMarketHashName(item, wearName);
+          if (!marketHashName) continue;
+          if (marketHashName.includes("StatTrak")) continue;
+          if (marketHashName.includes("Souvenir")) continue;
+
+          skins.push({
+            market_hash_name: marketHashName,
+            collection,
+            wear_name: wearName
+          });
+        }
+      }
+    }
 
     res.json({
       count: skins.length,
