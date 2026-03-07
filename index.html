@@ -46,7 +46,7 @@
       margin-bottom: 12px;
     }
 
-    .controls-grid {
+    .button-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
@@ -54,8 +54,7 @@
     }
 
     input,
-    button,
-    select {
+    button {
       border: none;
       border-radius: 14px;
       padding: 16px;
@@ -64,8 +63,7 @@
       box-sizing: border-box;
     }
 
-    input,
-    select {
+    input {
       background: #475569;
       color: white;
     }
@@ -273,7 +271,7 @@
     }
 
     @media (max-width: 700px) {
-      .controls-grid {
+      .button-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -319,14 +317,14 @@
   </div>
 
   <div class="card">
-    <h2>Collection Scanner</h2>
+    <h2>Collection Scanners</h2>
     <div class="muted">
-      Scans all skins in a collection. It prefers <b>Factory New</b>. If a skin has no Factory New variant, it keeps the skin and marks <b>Wear: N/A</b>.
+      Uses dedicated working collection buttons. Each collection prefers <b>Factory New</b>. If a skin has no Factory New variant, it keeps one fallback and marks <b>Wear: N/A</b>.
     </div>
 
-    <div class="controls-grid">
-      <select id="collectionSelect"></select>
-      <button id="scanCollectionButton" class="secondary-button" onclick="scanSelectedCollection()" disabled>Scan Collection</button>
+    <div class="button-grid">
+      <button id="scanLakeButton" class="secondary-button" onclick="scanCollection('lake')" disabled>Scan Lake Collection</button>
+      <button id="scanSafehouseButton" class="secondary-button" onclick="scanCollection('safehouse')" disabled>Scan Safehouse Collection</button>
     </div>
 
     <div id="scannerStatus" class="scanner-status">Scanner has not been run yet.</div>
@@ -340,8 +338,8 @@
     const pumpBox = document.getElementById("pumpBox");
     const datasetStatus = document.getElementById("datasetStatus");
     const searchButton = document.getElementById("searchButton");
-    const collectionSelect = document.getElementById("collectionSelect");
-    const scanCollectionButton = document.getElementById("scanCollectionButton");
+    const scanLakeButton = document.getElementById("scanLakeButton");
+    const scanSafehouseButton = document.getElementById("scanSafehouseButton");
     const scannerStatus = document.getElementById("scannerStatus");
     const scannerList = document.getElementById("scannerList");
 
@@ -349,7 +347,44 @@
     let SKINS_READY = false;
     let currentMatches = [];
     let activeIndex = -1;
-    let COLLECTION_MAP = {};
+
+    const COLLECTIONS = {
+      lake: {
+        label: "Lake Collection",
+        items: [
+          "Dual Berettas | Colony",
+          "Five-SeveN | Silver Quartz",
+          "G3SG1 | Desert Storm",
+          "Galil AR | Sage Spray",
+          "AWP | Pit Viper",
+          "FAMAS | Hexane",
+          "P250 | Facets",
+          "PP-Bizon | Carbon Fiber",
+          "M4A4 | Tornado",
+          "USP-S | Guardian"
+        ]
+      },
+      safehouse: {
+        label: "Safehouse Collection",
+        items: [
+          "MP7 | Army Recon",
+          "Galil AR | Shattered",
+          "M4A1-S | Nitro",
+          "USP-S | Road Rash",
+          "SSG 08 | Acid Fade",
+          "Five-SeveN | Nitro",
+          "MAC-10 | Amber Fade",
+          "Nova | Graphite",
+          "UMP-45 | Corporal",
+          "P90 | Ash Wood",
+          "M249 | System Lock",
+          "FAMAS | Doomkitty",
+          "Glock-18 | Steel Disruption",
+          "XM1014 | Blue Spruce",
+          "Tec-9 | Army Mesh"
+        ]
+      }
+    };
 
     async function loadSkinDatabase() {
       try {
@@ -364,47 +399,14 @@
         }
 
         SKINS = data.skins;
-        buildCollections();
-
         SKINS_READY = true;
-        datasetStatus.textContent = `Loaded full skin database (${data.count} items). Collections found: ${Object.keys(COLLECTION_MAP).length}.`;
+        datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
         searchButton.disabled = false;
-        scanCollectionButton.disabled = false;
+        scanLakeButton.disabled = false;
+        scanSafehouseButton.disabled = false;
       } catch (err) {
         datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
       }
-    }
-
-    function buildCollections() {
-      COLLECTION_MAP = {};
-
-      for (const skin of SKINS) {
-        const collection = skin.collection || "Unknown Collection";
-        const baseName = getBaseName(skin.market_hash_name);
-
-        if (!COLLECTION_MAP[collection]) {
-          COLLECTION_MAP[collection] = {};
-        }
-
-        if (!COLLECTION_MAP[collection][baseName]) {
-          COLLECTION_MAP[collection][baseName] = [];
-        }
-
-        COLLECTION_MAP[collection][baseName].push(skin);
-      }
-
-      const collections = Object.keys(COLLECTION_MAP).sort((a, b) => a.localeCompare(b));
-
-      collectionSelect.innerHTML = collections.map(name => {
-        return `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`;
-      }).join("");
-
-      const preferred = collections.find(name => name.toLowerCase().includes("lake")) || collections[0];
-      if (preferred) collectionSelect.value = preferred;
-    }
-
-    function getBaseName(name) {
-      return name.replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/, "").trim();
     }
 
     function normalize(text) {
@@ -417,6 +419,10 @@
 
     function tokenize(text) {
       return normalize(text).split(" ").filter(Boolean);
+    }
+
+    function getBaseName(name) {
+      return name.replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/, "").trim();
     }
 
     function scoreItem(query, item) {
@@ -687,50 +693,52 @@ Volume: ${data.volume || "N/A"}`;
       }
     }
 
-    function getPreferredCollectionPool(collectionKey) {
-      const collectionGroups = COLLECTION_MAP[collectionKey];
-      if (!collectionGroups) return [];
+    function getCollectionPool(collectionKey) {
+      if (!SKINS_READY || !COLLECTIONS[collectionKey]) return [];
 
-      const selected = [];
+      const result = [];
 
-      for (const baseName of Object.keys(collectionGroups)) {
-        const variants = collectionGroups[baseName];
+      for (const baseName of COLLECTIONS[collectionKey].items) {
+        const matchingVariants = SKINS.filter(item => getBaseName(item.market_hash_name) === baseName);
 
-        const factoryNew = variants.find(v => v.wear_name === "Factory New");
+        if (!matchingVariants.length) continue;
+
+        const factoryNew = matchingVariants.find(v => v.wear_name === "Factory New");
+
         if (factoryNew) {
-          selected.push({
+          result.push({
             market_hash_name: factoryNew.market_hash_name,
             wear_label: "Factory New"
           });
         } else {
-          const fallback = variants[0];
-          selected.push({
-            market_hash_name: fallback.market_hash_name,
+          result.push({
+            market_hash_name: matchingVariants[0].market_hash_name,
             wear_label: "N/A"
           });
         }
       }
 
-      return selected.sort((a, b) => a.market_hash_name.localeCompare(b.market_hash_name));
+      return result.sort((a, b) => a.market_hash_name.localeCompare(b.market_hash_name));
     }
 
-    async function scanSelectedCollection() {
+    async function scanCollection(collectionKey) {
       if (!SKINS_READY) {
         scannerStatus.textContent = "Skin database is still loading.";
         return;
       }
 
-      const collectionKey = collectionSelect.value;
-      const pool = getPreferredCollectionPool(collectionKey);
+      const collection = COLLECTIONS[collectionKey];
+      const pool = getCollectionPool(collectionKey);
 
-      if (!pool.length) {
+      if (!collection || !pool.length) {
         scannerStatus.textContent = "No valid collection skins were found.";
         return;
       }
 
-      scanCollectionButton.disabled = true;
+      scanLakeButton.disabled = true;
+      scanSafehouseButton.disabled = true;
       scannerList.innerHTML = "";
-      scannerStatus.textContent = `Preparing to scan ${pool.length} skins from ${collectionKey}...`;
+      scannerStatus.textContent = `Preparing to scan ${pool.length} ${collection.label} skins...`;
 
       const results = [];
 
@@ -738,7 +746,7 @@ Volume: ${data.volume || "N/A"}`;
         const skin = pool[i];
 
         scannerStatus.textContent =
-`Scanning ${collectionKey}
+`Scanning ${collection.label}
 ${i + 1} / ${pool.length}
 
 Current:
@@ -797,11 +805,12 @@ Volume: ${escapeHtml(item.volume)}</div>
       }
 
       scannerStatus.textContent =
-`${collectionKey} scan complete.
+`${collection.label} scan complete.
 Scanned: ${pool.length}
 Showing all results sorted by score.`;
 
-      scanCollectionButton.disabled = false;
+      scanLakeButton.disabled = false;
+      scanSafehouseButton.disabled = false;
     }
 
     function manualSearch() {
