@@ -46,11 +46,7 @@ function stripWearSuffix(name = "") {
 }
 
 function buildMarketHashName(item, wearName) {
-  const rawName =
-    item.market_hash_name ||
-    item.name ||
-    "";
-
+  const rawName = item.market_hash_name || item.name || "";
   const cleanedName = stripWearSuffix(rawName);
 
   if (!cleanedName || !wearName) return null;
@@ -68,6 +64,138 @@ function buildMarketHashName(item, wearName) {
   if (!weaponName) return null;
 
   return `${weaponName} | ${cleanedName} (${wearName})`;
+}
+
+function parseSteamHistoryDate(value) {
+  if (!value) return null;
+
+  let text = String(value).trim();
+  text = text.replace(/\s+\+\d+$/, "");
+  text = text.replace(/\s+[A-Z]{2,5}$/, "");
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
+function weightedMedian(values) {
+  if (!values.length) return null;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  return sorted[mid];
+}
+
+function summarizeHistory(prices) {
+  if (!Array.isArray(prices)) {
+    return {
+      success: false,
+      error: "Steam returned no history array"
+    };
+  }
+
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const cutoff = now - sevenDaysMs;
+
+  const expandedSales = [];
+  let sales7d = 0;
+  let points7d = 0;
+
+  for (const row of prices) {
+    if (!Array.isArray(row) || row.length < 3) continue;
+
+    const pointDate = parseSteamHistoryDate(row[0]);
+    const price = Number(row[1]);
+    const qty = Number(row[2]);
+
+    if (!pointDate) continue;
+    if (!Number.isFinite(price) || !Number.isFinite(qty)) continue;
+    if (pointDate.getTime() < cutoff) continue;
+    if (qty <= 0) continue;
+
+    points7d += 1;
+    sales7d += qty;
+
+    for (let i = 0; i < qty; i++) {
+      expandedSales.push(price);
+    }
+  }
+
+  if (!expandedSales.length) {
+    return {
+      success: true,
+      sales_7d: 0,
+      points_7d: 0,
+      median_7d: null,
+      average_7d: null,
+      low_7d: null,
+      high_7d: null
+    };
+  }
+
+  const sum = expandedSales.reduce((a, b) => a + b, 0);
+
+  return {
+    success: true,
+    sales_7d: sales7d,
+    points_7d: points7d,
+    median_7d: weightedMedian(expandedSales),
+    average_7d: sum / expandedSales.length,
+    low_7d: Math.min(...expandedSales),
+    high_7d: Math.max(...expandedSales)
+  };
+}
+
+async function fetchJsonWithRetry(url, retries = 2) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
+          Referer: "https://steamcommunity.com/market/"
+        }
+      });
+
+      const text = await response.text();
+
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+
+      if (data && typeof data === "object") {
+        return data;
+      }
+
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+      }
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+      } else {
+        return {
+          success: false,
+          error: err.message
+        };
+      }
+    }
+  }
+
+  return {
+    success: false,
+    error: "Steam returned invalid response"
+  };
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -127,19 +255,6 @@ app.get("/api/skins", async (req, res) => {
             wear_name: wearName
           });
         }
-      } else {
-        for (const wearName of WEARS) {
-          const marketHashName = buildMarketHashName(item, wearName);
-          if (!marketHashName) continue;
-          if (marketHashName.includes("StatTrak")) continue;
-          if (marketHashName.includes("Souvenir")) continue;
-
-          skins.push({
-            market_hash_name: marketHashName,
-            collection,
-            wear_name: wearName
-          });
-        }
       }
     }
 
@@ -154,59 +269,6 @@ app.get("/api/skins", async (req, res) => {
   }
 });
 
-async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
-  const params = new URLSearchParams({
-    appid: "730",
-    market_hash_name,
-    currency
-  });
-
-  const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          Accept: "application/json",
-          Referer: "https://steamcommunity.com/market/"
-        }
-      });
-
-      const text = await response.text();
-
-      let data = null;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = null;
-      }
-
-      if (data && typeof data === "object") {
-        return data;
-      }
-
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
-    } catch (err) {
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      } else {
-        return {
-          success: false,
-          error: err.message
-        };
-      }
-    }
-  }
-
-  return {
-    success: false,
-    error: "Steam returned invalid response"
-  };
-}
-
 app.get("/api/steam-price", async (req, res) => {
   try {
     const { market_hash_name, currency = "1" } = req.query;
@@ -217,8 +279,50 @@ app.get("/api/steam-price", async (req, res) => {
       });
     }
 
-    const data = await getSteamPriceWithRetry(market_hash_name, currency);
+    const params = new URLSearchParams({
+      appid: "730",
+      market_hash_name,
+      currency
+    });
+
+    const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
+    const data = await fetchJsonWithRetry(url, 2);
+
     res.json(data);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+app.get("/api/steam-history", async (req, res) => {
+  try {
+    const { market_hash_name } = req.query;
+
+    if (!market_hash_name) {
+      return res.status(400).json({
+        error: "market_hash_name required"
+      });
+    }
+
+    const params = new URLSearchParams({
+      appid: "730",
+      market_hash_name
+    });
+
+    const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
+    const raw = await fetchJsonWithRetry(url, 2);
+
+    if (!raw || raw.success === false) {
+      return res.json({
+        success: false,
+        error: raw?.error || "Steam history unavailable"
+      });
+    }
+
+    res.json(summarizeHistory(raw.prices));
   } catch (err) {
     res.status(500).json({
       success: false,
