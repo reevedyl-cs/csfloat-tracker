@@ -21,18 +21,26 @@ function inferWear(name = "") {
 }
 
 function getCollectionName(item) {
+  if (!item) return "Unknown Collection";
+
   if (Array.isArray(item.collections) && item.collections.length > 0) {
     const first = item.collections[0];
-    if (typeof first === "string" && first.trim()) return first.trim();
-    if (first && typeof first.name === "string" && first.name.trim()) return first.name.trim();
+
+    if (typeof first === "object" && first?.name) {
+      return String(first.name).trim();
+    }
+
+    if (typeof first === "string" && first.trim()) {
+      return first.trim();
+    }
   }
 
-  if (item.collection && typeof item.collection === "string" && item.collection.trim()) {
+  if (item.collection && typeof item.collection === "object" && item.collection?.name) {
+    return String(item.collection.name).trim();
+  }
+
+  if (typeof item.collection === "string" && item.collection.trim()) {
     return item.collection.trim();
-  }
-
-  if (item.collection && typeof item.collection === "object" && typeof item.collection.name === "string" && item.collection.name.trim()) {
-    return item.collection.name.trim();
   }
 
   return "Unknown Collection";
@@ -40,7 +48,8 @@ function getCollectionName(item) {
 
 app.get("/api/skins", async (req, res) => {
   try {
-    const url = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json";
+    const url =
+      "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json";
 
     const response = await fetch(url, {
       headers: {
@@ -56,6 +65,12 @@ app.get("/api/skins", async (req, res) => {
     }
 
     const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      return res.status(500).json({
+        error: "Skin dataset was not an array"
+      });
+    }
 
     const skins = data
       .filter(item => item && item.market_hash_name)
