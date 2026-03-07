@@ -30,7 +30,7 @@ app.get("/api/skins", async (req, res) => {
       .filter(item => !item.market_hash_name.includes("Souvenir"))
       .map(item => ({
         market_hash_name: item.market_hash_name,
-        collection: item.collection?.name || item.collection || "Unknown Collection",
+        collection: item.collections?.[0]?.name || "Unknown Collection",
         weapon: item.weapon?.name || item.weapon || "",
         category: item.category?.name || item.category || "",
         rarity: item.rarity?.name || item.rarity || "",
