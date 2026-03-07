@@ -69,12 +69,33 @@ function buildMarketHashName(item, wearName) {
 function parseSteamHistoryDate(value) {
   if (!value) return null;
 
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   let text = String(value).trim();
+
+  // Unix timestamp in string form
+  if (/^\d{10,13}$/.test(text)) {
+    const ms = text.length === 13 ? Number(text) : Number(text) * 1000;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
 
   text = text.replace(/\s+\+\d+$/, "");
   text = text.replace(/\s+[A-Z]{2,5}$/, "");
   text = text.replace(/,\s*/g, " ");
   text = text.replace(/\s+/g, " ").trim();
+
+  const directParsed = new Date(text);
+  if (!Number.isNaN(directParsed.getTime())) {
+    return directParsed;
+  }
 
   const match = text.match(
     /^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})$/
@@ -191,37 +212,147 @@ function summarizeHistory(prices) {
   };
 }
 
+function extractArrayLiteral(html, varName) {
+  const patterns = [
+    new RegExp(`var\\s+${varName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`),
+    new RegExp(`${varName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`)
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeFallbackDate(value) {
+  if (value == null) return null;
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  return String(value);
+}
+
+function extractHistoryRowsFromHtml(html) {
+  if (!html || typeof html !== "string") return null;
+
+  const line1Raw = extractArrayLiteral(html, "line1");
+  const line2Raw = extractArrayLiteral(html, "line2");
+  const line3Raw = extractArrayLiteral(html, "line3");
+
+  const line1 = line1Raw ? safeJsonParse(line1Raw) : null;
+  const line2 = line2Raw ? safeJsonParse(line2Raw) : null;
+  const line3 = line3Raw ? safeJsonParse(line3Raw) : null;
+
+  if (
+    Array.isArray(line1) &&
+    Array.isArray(line2) &&
+    Array.isArray(line3) &&
+    line1.length > 0 &&
+    line1.length === line2.length &&
+    line1.length === line3.length
+  ) {
+    const rows = [];
+
+    for (let i = 0; i < line1.length; i++) {
+      const dateValue = normalizeFallbackDate(line1[i]);
+      const priceValue = Number(line2[i]);
+      const qtyValue = Number(line3[i]);
+
+      if (!dateValue) continue;
+      if (!Number.isFinite(priceValue) || !Number.isFinite(qtyValue)) continue;
+
+      rows.push([dateValue, priceValue, qtyValue]);
+    }
+
+    if (rows.length) {
+      return rows;
+    }
+  }
+
+  const graphMatch = html.match(/var\s+g_plotPriceHistory\s*=\s*(\[[\s\S]*?\]);/);
+  if (graphMatch?.[1]) {
+    const parsed = safeJsonParse(graphMatch[1]);
+
+    if (Array.isArray(parsed)) {
+      const rows = parsed
+        .filter(row => Array.isArray(row) && row.length >= 3)
+        .map(row => [normalizeFallbackDate(row[0]), Number(row[1]), Number(row[2])])
+        .filter(row => row[0] && Number.isFinite(row[1]) && Number.isFinite(row[2]));
+
+      if (rows.length) {
+        return rows;
+      }
+    }
+  }
+
+  return null;
+}
+
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchTextWithRetry(url, retries = 3) {
-  let lastError = "Unknown request failure";
+async function fetchText(url, { accept = "*/*" } = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      Accept: accept,
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://steamcommunity.com/market/",
+      Origin: "https://steamcommunity.com"
+    }
+  });
+
+  const text = await response.text();
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    text
+  };
+}
+
+async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "request") {
+  let lastError = "request failed";
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          Referer: "https://steamcommunity.com/market/",
-          Origin: "https://steamcommunity.com"
-        }
+      const result = await fetchText(url, {
+        accept: "application/json, text/plain, */*"
       });
 
-      const text = await response.text();
+      if (!result.ok || !result.text || !result.text.trim()) {
+        lastError = `HTTP ${result.status}`;
+      } else {
+        const data = safeJsonParse(result.text);
 
-      if (response.ok && text && text.trim()) {
-        return {
-          ok: true,
-          status: response.status,
-          text
-        };
+        if (data && typeof data === "object" && (!validate || validate(data))) {
+          return data;
+        }
+
+        if (data && typeof data === "object") {
+          lastError = `invalid JSON shape for ${label}`;
+        } else {
+          lastError = `non-JSON response for ${label}`;
+        }
       }
-
-      lastError = `HTTP ${response.status}`;
     } catch (err) {
       lastError = err.message;
     }
@@ -232,62 +363,49 @@ async function fetchTextWithRetry(url, retries = 3) {
   }
 
   return {
-    ok: false,
-    error: lastError
+    success: false,
+    error: `${label} failed: ${lastError}`
   };
 }
 
-async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "request") {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    const result = await fetchTextWithRetry(url, 1);
+async function fetchListingHistoryFallback(marketHashName, country = "US", currency = "1") {
+  const encoded = encodeURIComponent(marketHashName);
+  const url = `https://steamcommunity.com/market/listings/730/${encoded}?country=${encodeURIComponent(
+    country
+  )}&currency=${encodeURIComponent(currency)}`;
 
-    if (!result.ok) {
-      if (attempt < retries) {
-        await sleep(2500 + Math.random() * 1000);
-        continue;
-      }
+  try {
+    const result = await fetchText(url, {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    });
 
+    if (!result.ok || !result.text || !result.text.trim()) {
       return {
         success: false,
-        error: `${label} failed: ${result.error || "request failed"}`
+        error: `listing-page fallback failed: HTTP ${result.status}`
       };
     }
 
-    let data = null;
+    const rows = extractHistoryRowsFromHtml(result.text);
 
-    try {
-      data = JSON.parse(result.text);
-    } catch {
-      if (attempt < retries) {
-        await sleep(2500 + Math.random() * 1000);
-        continue;
-      }
-
+    if (!rows || !rows.length) {
       return {
         success: false,
-        error: `Steam returned non-JSON response for ${label}`
+        error: "listing-page fallback did not contain parsable history"
       };
-    }
-
-    if (data && typeof data === "object" && (!validate || validate(data))) {
-      return data;
-    }
-
-    if (attempt < retries) {
-      await sleep(2500 + Math.random() * 1000);
-      continue;
     }
 
     return {
+      success: true,
+      source: "listing-page-fallback",
+      prices: rows
+    };
+  } catch (err) {
+    return {
       success: false,
-      error: `Steam returned invalid JSON shape for ${label}`
+      error: `listing-page fallback failed: ${err.message}`
     };
   }
-
-  return {
-    success: false,
-    error: `Steam returned invalid response for ${label}`
-  };
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -383,6 +501,7 @@ app.get("/api/steam-price", async (req, res) => {
     });
 
     const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
+
     const data = await fetchJsonWithRetry(
       url,
       3,
@@ -420,24 +539,49 @@ app.get("/api/steam-history", async (req, res) => {
       country: String(country)
     });
 
-    const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
+    const directUrl = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
 
-    const raw = await fetchJsonWithRetry(
-      url,
+    const direct = await fetchJsonWithRetry(
+      directUrl,
       3,
       data => data && data.success !== false && Array.isArray(data.prices),
       `pricehistory:${market_hash_name}`
     );
 
-    if (!raw || raw.success === false || !Array.isArray(raw.prices)) {
+    let historySource = "pricehistory-endpoint";
+    let prices = null;
+    let fallbackError = null;
+
+    if (direct && direct.success !== false && Array.isArray(direct.prices)) {
+      prices = direct.prices;
+    } else {
+      const fallback = await fetchListingHistoryFallback(
+        String(market_hash_name),
+        String(country),
+        String(currency)
+      );
+
+      if (fallback.success && Array.isArray(fallback.prices)) {
+        prices = fallback.prices;
+        historySource = fallback.source || "listing-page-fallback";
+      } else {
+        fallbackError = fallback.error || "listing-page fallback failed";
+      }
+    }
+
+    if (!prices) {
       return res.json({
         success: false,
-        error: raw?.error || "Steam history unavailable"
+        error: direct?.error || fallbackError || "Steam history unavailable"
       });
     }
 
-    const summary = summarizeHistory(raw.prices);
-    res.json(summary);
+    const summary = summarizeHistory(prices);
+
+    res.json({
+      ...summary,
+      source: historySource
+    });
   } catch (err) {
     res.status(500).json({
       success: false,
