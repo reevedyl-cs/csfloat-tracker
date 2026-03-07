@@ -303,7 +303,7 @@
       <div id="dropdown" class="dropdown" style="display:none;"></div>
     </div>
 
-    <button id="searchButton" onclick="manualSearch()" disabled>Search</button>
+    <button id="searchButton" disabled>Search</button>
 
     <div id="summary" class="summary">No search yet.</div>
 
@@ -350,6 +350,7 @@
     let currentMatches = [];
     let activeIndex = -1;
     let COLLECTION_MAP = {};
+    let scanInProgress = false;
 
     const WEAR_PRIORITY = [
       "Factory New",
@@ -412,11 +413,17 @@
       collectionButtons.innerHTML = collectionNames.map(name => {
         const baseCount = Object.keys(COLLECTION_MAP[name]).length;
         return `
-          <button class="secondary-button" onclick="scanCollectionByName('${escapeJs(name)}')">
+          <button class="secondary-button" data-collection="${escapeAttr(name)}">
             ${escapeHtml(name)} (${baseCount})
           </button>
         `;
       }).join("");
+
+      collectionButtons.querySelectorAll("button[data-collection]").forEach(button => {
+        button.addEventListener("click", () => {
+          scanCollectionByName(button.dataset.collection);
+        });
+      });
     }
 
     function normalize(text) {
@@ -578,7 +585,7 @@
           sub: `Lowest: ${formatUsd(lowest)} | 7d Median: N/A | 7d Sales: ${Number.isFinite(sales7d) ? sales7d : "N/A"}`,
           reasons: [
             "Could not build a reliable 7-day sales baseline.",
-            "This usually means Steam history data is missing or blocked for this item."
+            "This usually means Steam history data is missing, blocked, or there were no valid recent sales."
           ],
           quality
         };
@@ -739,6 +746,14 @@
       };
     }
 
+    function getHistoryStatusText(historyData) {
+      if (historyData?.error) return historyData.error;
+      if (Number.isFinite(historyData?.sales_7d) && historyData.sales_7d === 0) {
+        return "No sales in the last 7 days";
+      }
+      return "OK";
+    }
+
     async function searchSteamPrice(name) {
       summary.textContent = "Loading...";
 
@@ -766,7 +781,7 @@ Lowest price: ${priceData?.lowest_price || "N/A"}
 7d median sale: ${Number.isFinite(historyData?.median_7d) ? formatUsd(historyData.median_7d) : "N/A"}
 7d sales count: ${Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : "N/A"}
 7d average sale: ${Number.isFinite(historyData?.average_7d) ? formatUsd(historyData.average_7d) : "N/A"}
-History status: ${historyData?.error || "OK"}`;
+History status: ${getHistoryStatusText(historyData)}`;
 
         const result = buildPumpScore(priceData, historyData);
         renderPumpScore(result);
@@ -813,6 +828,8 @@ History status: ${historyData?.error || "OK"}`;
     }
 
     async function scanCollectionByName(collectionName) {
+      if (scanInProgress) return;
+
       if (!SKINS_READY) {
         scannerStatus.textContent = "Skin database is still loading.";
         return;
@@ -825,94 +842,98 @@ History status: ${historyData?.error || "OK"}`;
         return;
       }
 
+      scanInProgress = true;
       disableCollectionButtons(true);
       scannerList.innerHTML = "";
       scannerStatus.textContent = `Preparing to scan ${pool.length} skins from ${collectionName}...`;
 
       const results = [];
 
-      for (let i = 0; i < pool.length; i++) {
-        const skin = pool[i];
+      try {
+        for (let i = 0; i < pool.length; i++) {
+          const skin = pool[i];
 
-        scannerStatus.textContent =
+          scannerStatus.textContent =
 `Scanning ${collectionName}
 ${i + 1} / ${pool.length}
 
 Current:
 ${skin.market_hash_name}`;
 
-        try {
-          const [priceData, historyData] = await Promise.all([
-            fetchSteamPrice(skin.market_hash_name),
-            fetchSteamHistory(skin.market_hash_name)
-          ]);
+          try {
+            const [priceData, historyData] = await Promise.all([
+              fetchSteamPrice(skin.market_hash_name),
+              fetchSteamHistory(skin.market_hash_name)
+            ]);
 
-          const result = buildPumpScore(priceData, historyData);
+            const result = buildPumpScore(priceData, historyData);
 
-          results.push({
-            name: skin.market_hash_name,
-            wear: skin.wear_label,
-            lowest: priceData?.lowest_price || "N/A",
-            median_7d: Number.isFinite(historyData?.median_7d) ? formatUsd(historyData.median_7d) : "N/A",
-            sales_7d: Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : "N/A",
-            history_status: historyData?.error || "OK",
-            score: result.score,
-            rating: result.rating,
-            quality: result.quality,
-            tagClass: result.quality.className,
-            sub: result.sub
+            results.push({
+              name: skin.market_hash_name,
+              wear: skin.wear_label,
+              lowest: priceData?.lowest_price || "N/A",
+              median_7d: Number.isFinite(historyData?.median_7d) ? formatUsd(historyData.median_7d) : "N/A",
+              sales_7d: Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : "N/A",
+              history_status: getHistoryStatusText(historyData),
+              score: result.score,
+              rating: result.rating,
+              quality: result.quality,
+              tagClass: result.quality.className,
+              sub: result.sub
+            });
+          } catch (err) {
+            results.push({
+              name: skin.market_hash_name,
+              wear: skin.wear_label,
+              lowest: "N/A",
+              median_7d: "N/A",
+              sales_7d: "N/A",
+              history_status: "Request failed",
+              score: null,
+              rating: "Error",
+              quality: {
+                label: "Insufficient",
+                detail: "Request failed",
+                className: "tag-low"
+              },
+              tagClass: "tag-low",
+              sub: err.message
+            });
+          }
+
+          results.sort((a, b) => {
+            const aScore = a.score === null ? -1 : a.score;
+            const bScore = b.score === null ? -1 : b.score;
+            return bScore - aScore || a.name.localeCompare(b.name);
           });
-        } catch (err) {
-          results.push({
-            name: skin.market_hash_name,
-            wear: skin.wear_label,
-            lowest: "N/A",
-            median_7d: "N/A",
-            sales_7d: "N/A",
-            history_status: "Request failed",
-            score: null,
-            rating: "Error",
-            quality: {
-              label: "Insufficient",
-              detail: "Request failed",
-              className: "tag-low"
-            },
-            tagClass: "tag-low",
-            sub: err.message
-          });
-        }
 
-        results.sort((a, b) => {
-          const aScore = a.score === null ? -1 : a.score;
-          const bScore = b.score === null ? -1 : b.score;
-          return bScore - aScore || a.name.localeCompare(b.name);
-        });
-
-        scannerList.innerHTML = results.map((item, index) => `
-          <div class="scanner-item">
-            <div class="scanner-rank">#${index + 1}</div>
-            <div class="scanner-name">${escapeHtml(item.name)}</div>
-            <div class="scanner-meta">Wear: ${escapeHtml(item.wear)}
+          scannerList.innerHTML = results.map((item, index) => `
+            <div class="scanner-item">
+              <div class="scanner-rank">#${index + 1}</div>
+              <div class="scanner-name">${escapeHtml(item.name)}</div>
+              <div class="scanner-meta">Wear: ${escapeHtml(item.wear)}
 Score: ${item.score === null ? "--" : `${item.score} / 100`}
 Rating: ${escapeHtml(item.rating)}
 Lowest: ${escapeHtml(item.lowest)}
 7d Median Sale: ${escapeHtml(item.median_7d)}
 7d Sales Count: ${escapeHtml(String(item.sales_7d))}
 History Status: ${escapeHtml(item.history_status)}</div>
-            <div class="scanner-tag ${item.tagClass}">Market Data Quality: ${escapeHtml(item.quality.label)} — ${escapeHtml(item.quality.detail)}</div>
-            <div class="small-note" style="margin-top:10px;">${escapeHtml(item.sub)}</div>
-          </div>
-        `).join("");
+              <div class="scanner-tag ${item.tagClass}">Market Data Quality: ${escapeHtml(item.quality.label)} — ${escapeHtml(item.quality.detail)}</div>
+              <div class="small-note" style="margin-top:10px;">${escapeHtml(item.sub)}</div>
+            </div>
+          `).join("");
 
-        await new Promise(resolve => setTimeout(resolve, 4200 + Math.random() * 1200));
-      }
+          await new Promise(resolve => setTimeout(resolve, 4200 + Math.random() * 1200));
+        }
 
-      scannerStatus.textContent =
+        scannerStatus.textContent =
 `${collectionName} scan complete.
 Scanned: ${pool.length}
 Showing all results sorted by score.`;
-
-      disableCollectionButtons(false);
+      } finally {
+        scanInProgress = false;
+        disableCollectionButtons(false);
+      }
     }
 
     function manualSearch() {
@@ -949,12 +970,6 @@ Showing all results sorted by score.`;
 
     function escapeAttr(str) {
       return escapeHtml(str);
-    }
-
-    function escapeJs(str) {
-      return String(str)
-        .replaceAll("\\", "\\\\")
-        .replaceAll("'", "\\'");
     }
 
     input.addEventListener("input", () => {
@@ -1003,6 +1018,8 @@ Showing all results sorted by score.`;
         dropdown.style.display = "none";
       }
     });
+
+    searchButton.addEventListener("click", manualSearch);
 
     loadSkinDatabase();
   </script>
