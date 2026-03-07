@@ -39,22 +39,35 @@ function getCollectionName(item) {
   return "Unknown Collection";
 }
 
+function stripWearSuffix(name = "") {
+  return String(name)
+    .replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/, "")
+    .trim();
+}
+
 function buildMarketHashName(item, wearName) {
+  const rawName =
+    item.market_hash_name ||
+    item.name ||
+    "";
+
+  const cleanedName = stripWearSuffix(rawName);
+
+  if (!cleanedName || !wearName) return null;
+
+  if (cleanedName.includes(" | ")) {
+    return `${cleanedName} (${wearName})`;
+  }
+
   const weaponName =
     item.weapon?.name ||
     item.weapon_name ||
     item.weapon ||
     "";
 
-  const skinName =
-    item.name ||
-    item.skin_name ||
-    item.finish ||
-    "";
+  if (!weaponName) return null;
 
-  if (!weaponName || !skinName || !wearName) return null;
-
-  return `${weaponName} | ${skinName} (${wearName})`;
+  return `${weaponName} | ${cleanedName} (${wearName})`;
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -89,7 +102,6 @@ app.get("/api/skins", async (req, res) => {
       if (!item) continue;
 
       const collection = getCollectionName(item);
-
       if (collection === "Unknown Collection") continue;
 
       const wearBlocks = Array.isArray(item.wears) ? item.wears : [];
