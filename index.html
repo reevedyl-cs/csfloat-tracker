@@ -319,7 +319,7 @@
   <div class="card">
     <h2>Collection Scanners</h2>
     <div class="muted">
-      Uses dedicated working collection buttons. Each collection prefers <b>Factory New</b>. If a skin has no Factory New variant, it keeps one fallback and marks <b>Wear: N/A</b>.
+      Dedicated working collection buttons. Each collection prefers <b>Factory New</b>. If a skin has no Factory New variant, it keeps one fallback and marks <b>Wear: N/A</b>. Scanner uses very safe pacing with auto retry.
     </div>
 
     <div class="button-grid">
@@ -626,31 +626,38 @@
         currency: "1"
       });
 
-      const res = await fetch(`/api/steam-price?${params.toString()}`, {
-        headers: { Accept: "application/json" }
-      });
+      async function tryFetch() {
+        const res = await fetch(`/api/steam-price?${params.toString()}`, {
+          headers: { Accept: "application/json" }
+        });
 
-      let data = null;
+        let data = null;
 
-      try {
-        data = await res.json();
-      } catch (err) {
-        return {
-          success: false,
-          lowest_price: null,
-          median_price: null,
-          volume: null,
-          error: "Steam returned invalid JSON"
-        };
+        try {
+          data = await res.json();
+        } catch {
+          return null;
+        }
+
+        if (!data || typeof data !== "object") return null;
+
+        return data;
       }
 
-      if (!data || typeof data !== "object") {
+      let data = await tryFetch();
+
+      if (!data) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        data = await tryFetch();
+      }
+
+      if (!data) {
         return {
           success: false,
           lowest_price: null,
           median_price: null,
           volume: null,
-          error: "Steam returned no market data"
+          error: "Steam returned invalid response"
         };
       }
 
@@ -801,7 +808,7 @@ Volume: ${escapeHtml(item.volume)}</div>
           </div>
         `).join("");
 
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 3500 + Math.random() * 1000));
       }
 
       scannerStatus.textContent =
