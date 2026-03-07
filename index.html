@@ -46,13 +46,6 @@
       margin-bottom: 12px;
     }
 
-    .button-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 12px;
-    }
-
     input,
     button {
       border: none;
@@ -127,7 +120,8 @@
       line-height: 1.4;
     }
 
-    .pump-wrap {
+    .pump-wrap,
+    .scanner-wrap {
       margin-top: 20px;
       background: #0b132b;
       border-radius: 14px;
@@ -269,12 +263,6 @@
       background: rgba(239, 68, 68, 0.12);
       border: 1px solid rgba(239, 68, 68, 0.45);
     }
-
-    @media (max-width: 700px) {
-      .button-grid {
-        grid-template-columns: 1fr;
-      }
-    }
   </style>
 </head>
 <body>
@@ -317,15 +305,12 @@
   </div>
 
   <div class="card">
-    <h2>Category Scanners</h2>
+    <h2>Collection Scanner</h2>
     <div class="muted">
-      Scans live Steam data for the selected category using <b>Factory New only</b>, excluding <b>StatTrak</b> and <b>Souvenir</b>.
+      Starting small with <b>The Lake Collection</b>. This scans only the starter Lake list using <b>Factory New</b>, excluding <b>StatTrak</b> and <b>Souvenir</b>.
     </div>
 
-    <div class="button-grid">
-      <button id="scanPistolsButton" class="secondary-button" onclick="scanCategory('pistols')" disabled>Scan Pistols</button>
-      <button id="scanSnipersButton" class="secondary-button" onclick="scanCategory('snipers')" disabled>Scan Snipers</button>
-    </div>
+    <button id="scanLakeButton" class="secondary-button" onclick="scanLakeCollection()" disabled>Scan Lake Collection</button>
 
     <div id="scannerStatus" class="scanner-status">Scanner has not been run yet.</div>
     <div id="scannerList" class="scanner-list"></div>
@@ -338,8 +323,7 @@
     const pumpBox = document.getElementById("pumpBox");
     const datasetStatus = document.getElementById("datasetStatus");
     const searchButton = document.getElementById("searchButton");
-    const scanPistolsButton = document.getElementById("scanPistolsButton");
-    const scanSnipersButton = document.getElementById("scanSnipersButton");
+    const scanLakeButton = document.getElementById("scanLakeButton");
     const scannerStatus = document.getElementById("scannerStatus");
     const scannerList = document.getElementById("scannerList");
 
@@ -348,26 +332,18 @@
     let currentMatches = [];
     let activeIndex = -1;
 
-    const CATEGORY_PREFIXES = {
-      pistols: [
-        "Glock-18 |",
-        "USP-S |",
-        "P2000 |",
-        "P250 |",
-        "Five-SeveN |",
-        "CZ75-Auto |",
-        "Tec-9 |",
-        "Dual Berettas |",
-        "Desert Eagle |",
-        "R8 Revolver |"
-      ],
-      snipers: [
-        "AWP |",
-        "SSG 08 |",
-        "SCAR-20 |",
-        "G3SG1 |"
-      ]
-    };
+    const LAKE_COLLECTION = [
+      "Dual Berettas | Colony (Factory New)",
+      "Five-SeveN | Silver Quartz (Factory New)",
+      "G3SG1 | Desert Storm (Factory New)",
+      "Galil AR | Sage Spray (Factory New)",
+      "AWP | Pit Viper (Factory New)",
+      "FAMAS | Hexane (Factory New)",
+      "P250 | Facets (Factory New)",
+      "PP-Bizon | Carbon Fiber (Factory New)",
+      "M4A4 | Tornado (Factory New)",
+      "USP-S | Guardian (Factory New)"
+    ];
 
     async function loadSkinDatabase() {
       try {
@@ -385,8 +361,7 @@
         SKINS_READY = true;
         datasetStatus.textContent = `Loaded full skin database (${data.count} items).`;
         searchButton.disabled = false;
-        scanPistolsButton.disabled = false;
-        scanSnipersButton.disabled = false;
+        scanLakeButton.disabled = false;
       } catch (err) {
         datasetStatus.textContent = `Skin database failed to load: ${err.message}`;
       }
@@ -672,43 +647,35 @@ Volume: ${data.volume || "N/A"}`;
       }
     }
 
-    function getFactoryNewCategory(categoryKey) {
-      if (!SKINS_READY || !CATEGORY_PREFIXES[categoryKey]) return [];
+    function getLakeCollectionPool() {
+      if (!SKINS_READY) return [];
 
-      return SKINS.filter(name => {
-        const isCategory = CATEGORY_PREFIXES[categoryKey].some(prefix => name.startsWith(prefix));
+      return LAKE_COLLECTION.filter(name => {
         const isFactoryNew = name.endsWith("(Factory New)");
         const isStatTrak = name.includes("StatTrak");
         const isSouvenir = name.includes("Souvenir");
+        const existsInLoadedDb = SKINS.includes(name);
 
-        return isCategory && isFactoryNew && !isStatTrak && !isSouvenir;
+        return existsInLoadedDb && isFactoryNew && !isStatTrak && !isSouvenir;
       });
     }
 
-    function categoryLabel(categoryKey) {
-      if (categoryKey === "pistols") return "Factory New Pistols";
-      if (categoryKey === "snipers") return "Factory New Snipers";
-      return "Factory New Category";
-    }
-
-    async function scanCategory(categoryKey) {
+    async function scanLakeCollection() {
       if (!SKINS_READY) {
         scannerStatus.textContent = "Skin database is still loading.";
         return;
       }
 
-      const pool = getFactoryNewCategory(categoryKey);
-      const label = categoryLabel(categoryKey);
+      const pool = getLakeCollectionPool();
 
       if (!pool.length) {
-        scannerStatus.textContent = `No skins found for ${label}.`;
+        scannerStatus.textContent = "No valid Factory New Lake Collection skins were found.";
         return;
       }
 
-      scanPistolsButton.disabled = true;
-      scanSnipersButton.disabled = true;
+      scanLakeButton.disabled = true;
       scannerList.innerHTML = "";
-      scannerStatus.textContent = `Preparing to scan ${pool.length} ${label}...`;
+      scannerStatus.textContent = `Preparing to scan ${pool.length} Lake Collection skins...`;
 
       const results = [];
 
@@ -716,7 +683,7 @@ Volume: ${data.volume || "N/A"}`;
         const skin = pool[i];
 
         scannerStatus.textContent =
-`Scanning ${label}
+`Scanning Lake Collection
 ${i + 1} / ${pool.length}
 
 Current:
@@ -768,16 +735,15 @@ Volume: ${item.volume}</div>
           </div>
         `).join("");
 
-        await new Promise(resolve => setTimeout(resolve, 900));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
       scannerStatus.textContent =
-`${label} scan complete.
+`Lake Collection scan complete.
 Scanned: ${pool.length}
 Showing all results sorted by score.`;
 
-      scanPistolsButton.disabled = false;
-      scanSnipersButton.disabled = false;
+      scanLakeButton.disabled = false;
     }
 
     function manualSearch() {
