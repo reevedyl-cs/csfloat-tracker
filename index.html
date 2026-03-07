@@ -319,7 +319,7 @@
   <div class="card">
     <h2>Collection Scanners</h2>
     <div class="muted">
-      Dedicated working collection buttons. Each collection prefers <b>Factory New</b>. If a skin has no Factory New variant, it keeps one fallback and marks <b>Wear: N/A</b>. Scanner uses very safe pacing with auto retry.
+      Dedicated working collection buttons. Each collection uses the <b>best available wear</b> for each skin: <b>Factory New → Minimal Wear → Field-Tested → Well-Worn → Battle-Scarred</b>.
     </div>
 
     <div class="button-grid">
@@ -347,6 +347,14 @@
     let SKINS_READY = false;
     let currentMatches = [];
     let activeIndex = -1;
+
+    const WEAR_PRIORITY = [
+      "Factory New",
+      "Minimal Wear",
+      "Field-Tested",
+      "Well-Worn",
+      "Battle-Scarred"
+    ];
 
     const COLLECTIONS = {
       lake: {
@@ -700,6 +708,23 @@ Volume: ${data.volume || "N/A"}`;
       }
     }
 
+    function getBestWearVariant(variants) {
+      for (const wear of WEAR_PRIORITY) {
+        const match = variants.find(v => v.wear_name === wear);
+        if (match) {
+          return {
+            market_hash_name: match.market_hash_name,
+            wear_label: wear
+          };
+        }
+      }
+
+      return {
+        market_hash_name: variants[0].market_hash_name,
+        wear_label: variants[0].wear_name || "N/A"
+      };
+    }
+
     function getCollectionPool(collectionKey) {
       if (!SKINS_READY || !COLLECTIONS[collectionKey]) return [];
 
@@ -710,19 +735,7 @@ Volume: ${data.volume || "N/A"}`;
 
         if (!matchingVariants.length) continue;
 
-        const factoryNew = matchingVariants.find(v => v.wear_name === "Factory New");
-
-        if (factoryNew) {
-          result.push({
-            market_hash_name: factoryNew.market_hash_name,
-            wear_label: "Factory New"
-          });
-        } else {
-          result.push({
-            market_hash_name: matchingVariants[0].market_hash_name,
-            wear_label: "N/A"
-          });
-        }
+        result.push(getBestWearVariant(matchingVariants));
       }
 
       return result.sort((a, b) => a.market_hash_name.localeCompare(b.market_hash_name));
