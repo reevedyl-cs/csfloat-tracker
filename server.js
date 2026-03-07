@@ -70,26 +70,49 @@ function parseSteamHistoryDate(value) {
   if (!value) return null;
 
   let text = String(value).trim();
+
   text = text.replace(/\s+\+\d+$/, "");
   text = text.replace(/\s+[A-Z]{2,5}$/, "");
+  text = text.replace(/,\s*/g, " ");
+  text = text.replace(/\s+/g, " ").trim();
 
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const match = text.match(
+    /^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})$/
+  );
 
-  return null;
-}
+  if (!match) return null;
 
-function weightedMedian(values) {
-  if (!values.length) return null;
+  const [, mon, day, year, hour, minute] = match;
 
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
+  const months = {
+    Jan: 0,
+    Feb: 1,
+    Mar: 2,
+    Apr: 3,
+    May: 4,
+    Jun: 5,
+    Jul: 6,
+    Aug: 7,
+    Sep: 8,
+    Oct: 9,
+    Nov: 10,
+    Dec: 11
+  };
 
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
+  const monthIndex = months[mon];
+  if (monthIndex === undefined) return null;
 
-  return sorted[mid];
+  const date = new Date(
+    Number(year),
+    monthIndex,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0
+  );
+
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function summarizeHistory(prices) {
@@ -101,12 +124,14 @@ function summarizeHistory(prices) {
   }
 
   const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-  const cutoff = now - sevenDaysMs;
+  const cutoff = now - 7 * 24 * 60 * 60 * 1000;
 
-  const expandedSales = [];
+  const rows7d = [];
   let sales7d = 0;
   let points7d = 0;
+  let weightedSum = 0;
+  let low = Infinity;
+  let high = -Infinity;
 
   for (const row of prices) {
     if (!Array.isArray(row) || row.length < 3) continue;
@@ -116,44 +141,57 @@ function summarizeHistory(prices) {
     const qty = Number(row[2]);
 
     if (!pointDate) continue;
-    if (!Number.isFinite(price) || !Number.isFinite(qty)) continue;
+    if (!Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) continue;
     if (pointDate.getTime() < cutoff) continue;
-    if (qty <= 0) continue;
 
     points7d += 1;
     sales7d += qty;
+    weightedSum += price * qty;
+    low = Math.min(low, price);
+    high = Math.max(high, price);
 
-    for (let i = 0; i < qty; i++) {
-      expandedSales.push(price);
-    }
+    rows7d.push({ price, qty });
   }
 
-  if (!expandedSales.length) {
+  if (!rows7d.length || sales7d <= 0) {
     return {
       success: true,
       sales_7d: 0,
-      points_7d: 0,
+      points_7d: points7d,
       median_7d: null,
       average_7d: null,
       low_7d: null,
-      high_7d: null
+      high_7d: null,
+      error: "No valid 7-day Steam sales found"
     };
   }
 
-  const sum = expandedSales.reduce((a, b) => a + b, 0);
+  rows7d.sort((a, b) => a.price - b.price);
+
+  let median = null;
+  const midpoint = sales7d / 2;
+  let running = 0;
+
+  for (const row of rows7d) {
+    running += row.qty;
+    if (running >= midpoint) {
+      median = row.price;
+      break;
+    }
+  }
 
   return {
     success: true,
     sales_7d: sales7d,
     points_7d: points7d,
-    median_7d: weightedMedian(expandedSales),
-    average_7d: sum / expandedSales.length,
-    low_7d: Math.min(...expandedSales),
-    high_7d: Math.max(...expandedSales)
+    median_7d: median,
+    average_7d: weightedSum / sales7d,
+    low_7d: Number.isFinite(low) ? low : null,
+    high_7d: Number.isFinite(high) ? high : null
   };
 }
 
-async function fetchJsonWithRetry(url, retries = 2) {
+async function fetchJsonWithRetry(url, retries = 2, validate = null) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, {
@@ -173,7 +211,7 @@ async function fetchJsonWithRetry(url, retries = 2) {
         data = null;
       }
 
-      if (data && typeof data === "object") {
+      if (data && typeof data === "object" && (!validate || validate(data))) {
         return data;
       }
 
@@ -286,7 +324,11 @@ app.get("/api/steam-price", async (req, res) => {
     });
 
     const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
-    const data = await fetchJsonWithRetry(url, 2);
+    const data = await fetchJsonWithRetry(
+      url,
+      2,
+      data => data && typeof data === "object"
+    );
 
     res.json(data);
   } catch (err) {
@@ -313,16 +355,21 @@ app.get("/api/steam-history", async (req, res) => {
     });
 
     const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
-    const raw = await fetchJsonWithRetry(url, 2);
+    const raw = await fetchJsonWithRetry(
+      url,
+      2,
+      data => data && data.success !== false && Array.isArray(data.prices)
+    );
 
-    if (!raw || raw.success === false) {
+    if (!raw || raw.success === false || !Array.isArray(raw.prices)) {
       return res.json({
         success: false,
         error: raw?.error || "Steam history unavailable"
       });
     }
 
-    res.json(summarizeHistory(raw.prices));
+    const summary = summarizeHistory(raw.prices);
+    res.json(summary);
   } catch (err) {
     res.status(500).json({
       success: false,
