@@ -49,7 +49,7 @@ function getCollectionName(item) {
 app.get("/api/skins", async (req, res) => {
   try {
     const url =
-      "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json";
+      "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json";
 
     const response = await fetch(url, {
       headers: {
@@ -73,14 +73,44 @@ app.get("/api/skins", async (req, res) => {
     }
 
     const skins = data
-      .filter(item => item && item.market_hash_name)
-      .filter(item => !item.market_hash_name.includes("StatTrak"))
-      .filter(item => !item.market_hash_name.includes("Souvenir"))
-      .map(item => ({
-        market_hash_name: item.market_hash_name,
-        collection: getCollectionName(item),
-        wear_name: item.wear?.name || item.wear_name || inferWear(item.market_hash_name)
-      }));
+      .filter(item => item && (item.market_hash_name || item.name))
+      .flatMap(item => {
+        const collection = getCollectionName(item);
+
+        const baseName =
+          item.market_hash_name ||
+          item.name ||
+          "";
+
+        const wearBlocks = Array.isArray(item.wears) && item.wears.length > 0
+          ? item.wears
+          : [{ name: inferWear(baseName), market_hash_name: baseName }];
+
+        return wearBlocks
+          .map(wear => {
+            const marketHashName =
+              wear.market_hash_name ||
+              wear.marketHashName ||
+              wear.name ||
+              baseName;
+
+            const wearName =
+              wear.name ||
+              wear.wear_name ||
+              inferWear(marketHashName);
+
+            return {
+              market_hash_name: marketHashName,
+              collection,
+              wear_name: wearName
+            };
+          })
+          .filter(skin =>
+            skin.market_hash_name &&
+            !skin.market_hash_name.includes("StatTrak") &&
+            !skin.market_hash_name.includes("Souvenir")
+          );
+      });
 
     res.json({
       count: skins.length,
