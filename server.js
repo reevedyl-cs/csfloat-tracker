@@ -191,6 +191,10 @@ function summarizeHistory(prices) {
   };
 }
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function fetchTextWithRetry(url, retries = 3) {
   let lastError = "Unknown request failure";
 
@@ -198,10 +202,12 @@ async function fetchTextWithRetry(url, retries = 3) {
     try {
       const response = await fetch(url, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "application/json, text/plain, */*",
-          "Referer": "https://steamcommunity.com/market/",
-          "Origin": "https://steamcommunity.com"
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
+          Referer: "https://steamcommunity.com/market/",
+          Origin: "https://steamcommunity.com"
         }
       });
 
@@ -221,7 +227,7 @@ async function fetchTextWithRetry(url, retries = 3) {
     }
 
     if (attempt < retries) {
-      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+      await sleep(2500 + Math.random() * 1000);
     }
   }
 
@@ -237,7 +243,7 @@ async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "re
 
     if (!result.ok) {
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+        await sleep(2500 + Math.random() * 1000);
         continue;
       }
 
@@ -252,11 +258,8 @@ async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "re
     try {
       data = JSON.parse(result.text);
     } catch {
-      const snippet = result.text.slice(0, 220).replace(/\s+/g, " ").trim();
-      console.log(`[${label}] non-JSON response:`, snippet);
-
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+        await sleep(2500 + Math.random() * 1000);
         continue;
       }
 
@@ -270,10 +273,8 @@ async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "re
       return data;
     }
 
-    console.log(`[${label}] invalid JSON shape:`, JSON.stringify(data).slice(0, 300));
-
     if (attempt < retries) {
-      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+      await sleep(2500 + Math.random() * 1000);
       continue;
     }
 
@@ -362,7 +363,11 @@ app.get("/api/skins", async (req, res) => {
 
 app.get("/api/steam-price", async (req, res) => {
   try {
-    const { market_hash_name, currency = "1" } = req.query;
+    const {
+      market_hash_name,
+      currency = "1",
+      country = "US"
+    } = req.query;
 
     if (!market_hash_name) {
       return res.status(400).json({
@@ -372,8 +377,9 @@ app.get("/api/steam-price", async (req, res) => {
 
     const params = new URLSearchParams({
       appid: "730",
-      market_hash_name,
-      currency
+      market_hash_name: String(market_hash_name),
+      currency: String(currency),
+      country: String(country)
     });
 
     const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
@@ -395,7 +401,11 @@ app.get("/api/steam-price", async (req, res) => {
 
 app.get("/api/steam-history", async (req, res) => {
   try {
-    const { market_hash_name } = req.query;
+    const {
+      market_hash_name,
+      currency = "1",
+      country = "US"
+    } = req.query;
 
     if (!market_hash_name) {
       return res.status(400).json({
@@ -405,7 +415,9 @@ app.get("/api/steam-history", async (req, res) => {
 
     const params = new URLSearchParams({
       appid: "730",
-      market_hash_name
+      market_hash_name: String(market_hash_name),
+      currency: String(currency),
+      country: String(country)
     });
 
     const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
@@ -425,7 +437,6 @@ app.get("/api/steam-history", async (req, res) => {
     }
 
     const summary = summarizeHistory(raw.prices);
-
     res.json(summary);
   } catch (err) {
     res.status(500).json({
