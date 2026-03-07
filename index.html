@@ -360,6 +360,9 @@
       "Battle-Scarred"
     ];
 
+    const DEFAULT_COUNTRY = "US";
+    const DEFAULT_CURRENCY = "1";
+
     async function loadSkinDatabase() {
       try {
         const res = await fetch("/api/skins", {
@@ -693,7 +696,8 @@
     async function fetchSteamPrice(name) {
       const params = new URLSearchParams({
         market_hash_name: name,
-        currency: "1"
+        country: DEFAULT_COUNTRY,
+        currency: DEFAULT_CURRENCY
       });
 
       async function tryFetch() {
@@ -726,7 +730,9 @@
 
     async function fetchSteamHistory(name) {
       const params = new URLSearchParams({
-        market_hash_name: name
+        market_hash_name: name,
+        country: DEFAULT_COUNTRY,
+        currency: DEFAULT_CURRENCY
       });
 
       async function tryFetch() {
