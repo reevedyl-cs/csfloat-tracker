@@ -533,6 +533,14 @@
       return `$${value.toFixed(2)}`;
     }
 
+    function getHistoryStatusText(historyData) {
+      if (historyData?.error) return historyData.error;
+      if (Number.isFinite(historyData?.sales_7d) && historyData.sales_7d === 0) {
+        return "No sales in the last 7 days";
+      }
+      return "OK";
+    }
+
     function buildDataQuality(priceData, historyData) {
       const hasLowest = Number.isFinite(parseMoney(priceData?.lowest_price));
       const hasHistoryMedian = Number.isFinite(historyData?.median_7d);
@@ -585,7 +593,7 @@
           sub: `Lowest: ${formatUsd(lowest)} | 7d Median: N/A | 7d Sales: ${Number.isFinite(sales7d) ? sales7d : "N/A"}`,
           reasons: [
             "Could not build a reliable 7-day sales baseline.",
-            "This usually means Steam history data is missing, blocked, or there were no valid recent sales."
+            "This item may have blocked history, no valid recent sales, or Steam may have returned a bad response."
           ],
           quality
         };
@@ -744,14 +752,6 @@
         success: false,
         error: "Steam history unavailable"
       };
-    }
-
-    function getHistoryStatusText(historyData) {
-      if (historyData?.error) return historyData.error;
-      if (Number.isFinite(historyData?.sales_7d) && historyData.sales_7d === 0) {
-        return "No sales in the last 7 days";
-      }
-      return "OK";
     }
 
     async function searchSteamPrice(name) {
