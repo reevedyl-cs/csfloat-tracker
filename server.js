@@ -7,6 +7,7 @@ app.use(express.static("."));
 
 app.get("/api/skins", async (req, res) => {
   try {
+
     const url = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json";
 
     const response = await fetch(url, {
@@ -28,30 +29,52 @@ app.get("/api/skins", async (req, res) => {
       .filter(item => item && item.market_hash_name)
       .filter(item => !item.market_hash_name.includes("StatTrak"))
       .filter(item => !item.market_hash_name.includes("Souvenir"))
-      .map(item => ({
-        market_hash_name: item.market_hash_name,
-        collection: item.collections?.[0]?.name || "Unknown Collection",
-        weapon: item.weapon?.name || item.weapon || "",
-        category: item.category?.name || item.category || "",
-        rarity: item.rarity?.name || item.rarity || "",
-        wear_name: item.wear?.name || item.wear_name || inferWear(item.market_hash_name),
-        paint_index: item.paint_index ?? null,
-        min_float: item.min_float ?? null,
-        max_float: item.max_float ?? null
-      }));
+      .map(item => {
+
+        let collection = "Unknown Collection";
+
+        if (item.collections && item.collections.length > 0) {
+          collection = item.collections[0].name;
+        }
+
+        if (item.collection && typeof item.collection === "object") {
+          collection = item.collection.name || collection;
+        }
+
+        if (typeof item.collection === "string") {
+          collection = item.collection;
+        }
+
+        return {
+          market_hash_name: item.market_hash_name,
+          collection,
+          weapon: item.weapon?.name || item.weapon || "",
+          category: item.category?.name || item.category || "",
+          rarity: item.rarity?.name || item.rarity || "",
+          wear_name: item.wear?.name || inferWear(item.market_hash_name),
+          paint_index: item.paint_index ?? null,
+          min_float: item.min_float ?? null,
+          max_float: item.max_float ?? null
+        };
+
+      });
 
     res.json({
       count: cleaned.length,
       skins: cleaned
     });
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message
     });
+
   }
 });
 
 function inferWear(name) {
+
   const wears = [
     "Factory New",
     "Minimal Wear",
@@ -65,9 +88,11 @@ function inferWear(name) {
   }
 
   return "N/A";
+
 }
 
 async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
+
   const params = new URLSearchParams({
     appid: "730",
     market_hash_name,
@@ -77,7 +102,9 @@ async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
   const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
+
     try {
+
       const response = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0",
@@ -89,6 +116,7 @@ async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
       const text = await response.text();
 
       let data = null;
+
       try {
         data = JSON.parse(text);
       } catch {
@@ -101,14 +129,10 @@ async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
 
       if (attempt < 2) {
         await new Promise(resolve => setTimeout(resolve, 1500));
-      } else {
-        return {
-          success: false,
-          error: "Steam returned invalid or empty JSON",
-          raw: text.slice(0, 300)
-        };
       }
+
     } catch (err) {
+
       if (attempt < 2) {
         await new Promise(resolve => setTimeout(resolve, 1500));
       } else {
@@ -117,12 +141,22 @@ async function getSteamPriceWithRetry(market_hash_name, currency = "1") {
           error: err.message
         };
       }
+
     }
+
   }
+
+  return {
+    success: false,
+    error: "Steam returned invalid response"
+  };
+
 }
 
 app.get("/api/steam-price", async (req, res) => {
+
   try {
+
     const { market_hash_name, currency = "1" } = req.query;
 
     if (!market_hash_name) {
@@ -132,13 +166,18 @@ app.get("/api/steam-price", async (req, res) => {
     }
 
     const data = await getSteamPriceWithRetry(market_hash_name, currency);
+
     res.json(data);
+
   } catch (err) {
+
     res.status(500).json({
       success: false,
       error: err.message
     });
+
   }
+
 });
 
 app.listen(PORT, () => {
