@@ -191,48 +191,101 @@ function summarizeHistory(prices) {
   };
 }
 
-async function fetchJsonWithRetry(url, retries = 2, validate = null) {
+async function fetchTextWithRetry(url, retries = 3) {
+  let lastError = "Unknown request failure";
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, {
         headers: {
-          "User-Agent": "Mozilla/5.0",
-          Accept: "application/json",
-          Referer: "https://steamcommunity.com/market/"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          "Referer": "https://steamcommunity.com/market/",
+          "Origin": "https://steamcommunity.com"
         }
       });
 
       const text = await response.text();
 
-      let data = null;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = null;
-      }
-
-      if (data && typeof data === "object" && (!validate || validate(data))) {
-        return data;
-      }
-
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
-    } catch (err) {
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      } else {
+      if (response.ok && text && text.trim()) {
         return {
-          success: false,
-          error: err.message
+          ok: true,
+          status: response.status,
+          text
         };
       }
+
+      lastError = `HTTP ${response.status}`;
+    } catch (err) {
+      lastError = err.message;
+    }
+
+    if (attempt < retries) {
+      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
     }
   }
 
   return {
+    ok: false,
+    error: lastError
+  };
+}
+
+async function fetchJsonWithRetry(url, retries = 3, validate = null, label = "request") {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const result = await fetchTextWithRetry(url, 1);
+
+    if (!result.ok) {
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: `${label} failed: ${result.error || "request failed"}`
+      };
+    }
+
+    let data = null;
+
+    try {
+      data = JSON.parse(result.text);
+    } catch {
+      const snippet = result.text.slice(0, 220).replace(/\s+/g, " ").trim();
+      console.log(`[${label}] non-JSON response:`, snippet);
+
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: `Steam returned non-JSON response for ${label}`
+      };
+    }
+
+    if (data && typeof data === "object" && (!validate || validate(data))) {
+      return data;
+    }
+
+    console.log(`[${label}] invalid JSON shape:`, JSON.stringify(data).slice(0, 300));
+
+    if (attempt < retries) {
+      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 1500));
+      continue;
+    }
+
+    return {
+      success: false,
+      error: `Steam returned invalid JSON shape for ${label}`
+    };
+  }
+
+  return {
     success: false,
-    error: "Steam returned invalid response"
+    error: `Steam returned invalid response for ${label}`
   };
 }
 
@@ -326,8 +379,9 @@ app.get("/api/steam-price", async (req, res) => {
     const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
     const data = await fetchJsonWithRetry(
       url,
-      2,
-      data => data && typeof data === "object"
+      3,
+      data => data && typeof data === "object",
+      `priceoverview:${market_hash_name}`
     );
 
     res.json(data);
@@ -355,10 +409,12 @@ app.get("/api/steam-history", async (req, res) => {
     });
 
     const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
+
     const raw = await fetchJsonWithRetry(
       url,
-      2,
-      data => data && data.success !== false && Array.isArray(data.prices)
+      3,
+      data => data && data.success !== false && Array.isArray(data.prices),
+      `pricehistory:${market_hash_name}`
     );
 
     if (!raw || raw.success === false || !Array.isArray(raw.prices)) {
@@ -369,6 +425,7 @@ app.get("/api/steam-history", async (req, res) => {
     }
 
     const summary = summarizeHistory(raw.prices);
+
     res.json(summary);
   } catch (err) {
     res.status(500).json({
