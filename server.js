@@ -66,22 +66,8 @@ function buildMarketHashName(item, wearName) {
   return `${weaponName} | ${cleanedName} (${wearName})`;
 }
 
-function parseSteamHistoryDate(value) {
-  if (!value) return null;
-
-  let text = String(value).trim();
-  text = text.replace(/\s+\+\d+$/, "");
-  text = text.replace(/\s+[A-Z]{2,5}$/, "");
-
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed;
-
-  return null;
-}
-
-function weightedMedian(values) {
+function median(values) {
   if (!values.length) return null;
-
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
 
@@ -92,75 +78,93 @@ function weightedMedian(values) {
   return sorted[mid];
 }
 
-function summarizeHistory(prices) {
-  if (!Array.isArray(prices)) {
+function summarizeCsfloatListings(data, marketHashName) {
+  const listings = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+
+  const normalized = listings
+    .filter(listing => listing && typeof listing === "object")
+    .map(listing => {
+      const cents = Number(listing.price);
+      const dollars = Number.isFinite(cents) ? cents / 100 : NaN;
+
+      return {
+        id: listing.id || null,
+        price_cents: cents,
+        price: dollars,
+        type: listing.type || null,
+        state: listing.state || null,
+        item: listing.item || null,
+        market_hash_name:
+          listing.item?.market_hash_name ||
+          listing.market_hash_name ||
+          marketHashName ||
+          null,
+        float_value: listing.item?.float_value ?? null,
+        seller: listing.seller || null
+      };
+    })
+    .filter(x => Number.isFinite(x.price) && x.price > 0);
+
+  if (!normalized.length) {
     return {
       success: false,
-      error: "Steam returned no history array"
+      error: "No CSFloat listings returned",
+      market_hash_name: marketHashName,
+      lowest_price: null,
+      median_price: null,
+      average_price: null,
+      listing_count: 0,
+      spread_percent: null,
+      listings: []
     };
   }
 
-  const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-  const cutoff = now - sevenDaysMs;
-
-  const expandedSales = [];
-  let sales7d = 0;
-  let points7d = 0;
-
-  for (const row of prices) {
-    if (!Array.isArray(row) || row.length < 3) continue;
-
-    const pointDate = parseSteamHistoryDate(row[0]);
-    const price = Number(row[1]);
-    const qty = Number(row[2]);
-
-    if (!pointDate) continue;
-    if (!Number.isFinite(price) || !Number.isFinite(qty)) continue;
-    if (pointDate.getTime() < cutoff) continue;
-    if (qty <= 0) continue;
-
-    points7d += 1;
-    sales7d += qty;
-
-    for (let i = 0; i < qty; i++) {
-      expandedSales.push(price);
-    }
-  }
-
-  if (!expandedSales.length) {
-    return {
-      success: true,
-      sales_7d: 0,
-      points_7d: 0,
-      median_7d: null,
-      average_7d: null,
-      low_7d: null,
-      high_7d: null
-    };
-  }
-
-  const sum = expandedSales.reduce((a, b) => a + b, 0);
+  const prices = normalized.map(x => x.price).sort((a, b) => a - b);
+  const lowest = prices[0];
+  const med = median(prices);
+  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const highest = prices[prices.length - 1];
+  const spreadPercent = lowest > 0 ? ((highest - lowest) / lowest) * 100 : null;
 
   return {
     success: true,
-    sales_7d: sales7d,
-    points_7d: points7d,
-    median_7d: weightedMedian(expandedSales),
-    average_7d: sum / expandedSales.length,
-    low_7d: Math.min(...expandedSales),
-    high_7d: Math.max(...expandedSales)
+    market_hash_name: normalized[0].market_hash_name || marketHashName,
+    lowest_price: lowest,
+    median_price: med,
+    average_price: avg,
+    highest_price: highest,
+    listing_count: normalized.length,
+    spread_percent: spreadPercent,
+    listings: normalized
   };
 }
 
-async function fetchJsonWithRetry(url, retries = 2) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
+async function fetchCsfloatListings(marketHashName) {
+  const apiKey = process.env.CSFLOAT_API_KEY;
+
+  if (!apiKey) {
+    return {
+      success: false,
+      error: "Missing CSFLOAT_API_KEY"
+    };
+  }
+
+  const params = new URLSearchParams({
+    market_hash_name: marketHashName,
+    sort_by: "lowest_price",
+    limit: "50",
+    category: "1"
+  });
+
+  const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const response = await fetch(url, {
         headers: {
-          "User-Agent": "Mozilla/5.0",
+          Authorization: apiKey,
           Accept: "application/json",
-          Referer: "https://steamcommunity.com/market/"
+          "User-Agent": "Mozilla/5.0"
         }
       });
 
@@ -173,28 +177,61 @@ async function fetchJsonWithRetry(url, retries = 2) {
         data = null;
       }
 
-      if (data && typeof data === "object") {
-        return data;
-      }
-
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
-    } catch (err) {
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      } else {
+      if (response.status === 401) {
         return {
           success: false,
-          error: err.message
+          error: "CSFloat API key rejected (401)"
         };
       }
+
+      if (response.status === 429) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+
+        return {
+          success: false,
+          error: "CSFloat rate limited the request (429)"
+        };
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `CSFloat request failed: ${response.status}`
+        };
+      }
+
+      if (!data) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        return {
+          success: false,
+          error: "CSFloat returned invalid JSON"
+        };
+      }
+
+      return summarizeCsfloatListings(data, marketHashName);
+    } catch (err) {
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: err.message
+      };
     }
   }
 
   return {
     success: false,
-    error: "Steam returned invalid response"
+    error: "Unknown CSFloat request failure"
   };
 }
 
@@ -269,25 +306,24 @@ app.get("/api/skins", async (req, res) => {
   }
 });
 
-app.get("/api/steam-price", async (req, res) => {
+app.get("/api/test-csfloat-key", (req, res) => {
+  res.json({
+    hasKey: !!process.env.CSFLOAT_API_KEY
+  });
+});
+
+app.get("/api/csfloat-price", async (req, res) => {
   try {
-    const { market_hash_name, currency = "1" } = req.query;
+    const { market_hash_name } = req.query;
 
     if (!market_hash_name) {
       return res.status(400).json({
+        success: false,
         error: "market_hash_name required"
       });
     }
 
-    const params = new URLSearchParams({
-      appid: "730",
-      market_hash_name,
-      currency
-    });
-
-    const url = `https://steamcommunity.com/market/priceoverview/?${params.toString()}`;
-    const data = await fetchJsonWithRetry(url, 2);
-
+    const data = await fetchCsfloatListings(market_hash_name);
     res.json(data);
   } catch (err) {
     res.status(500).json({
@@ -295,46 +331,6 @@ app.get("/api/steam-price", async (req, res) => {
       error: err.message
     });
   }
-});
-
-app.get("/api/steam-history", async (req, res) => {
-  try {
-    const { market_hash_name } = req.query;
-
-    if (!market_hash_name) {
-      return res.status(400).json({
-        error: "market_hash_name required"
-      });
-    }
-
-    const params = new URLSearchParams({
-      appid: "730",
-      market_hash_name
-    });
-
-    const url = `https://steamcommunity.com/market/pricehistory/?${params.toString()}`;
-    const raw = await fetchJsonWithRetry(url, 2);
-
-    if (!raw || raw.success === false) {
-      return res.json({
-        success: false,
-        error: raw?.error || "Steam history unavailable"
-      });
-    }
-
-    res.json(summarizeHistory(raw.prices));
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-app.get("/api/test-csfloat-key", (req, res) => {
-  res.json({
-    hasKey: !!process.env.CSFLOAT_API_KEY
-  });
 });
 
 app.listen(PORT, () => {
