@@ -223,7 +223,7 @@ app.get("/api/skinport-item", async (req, res) => {
     const params = new URLSearchParams({
       app_id: "730",
       currency,
-      market_hash_name
+      tradable: "0"
     });
 
     const url = `https://api.skinport.com/v1/items?${params.toString()}`;
@@ -234,7 +234,7 @@ app.get("/api/skinport-item", async (req, res) => {
     }
 
     const rows = Array.isArray(result.data) ? result.data : [];
-    const item = rows.find((x) => x.market_hash_name === market_hash_name) || rows[0];
+    const item = rows.find((x) => x.market_hash_name === market_hash_name);
 
     if (!item) {
       return res.json({
@@ -302,7 +302,7 @@ app.get("/api/test-skinport", async (req, res) => {
     const params = new URLSearchParams({
       app_id: "730",
       currency: "USD",
-      market_hash_name: "AK-47 | Redline (Field-Tested)"
+      tradable: "0"
     });
 
     const url = `https://api.skinport.com/v1/items?${params.toString()}`;
