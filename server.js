@@ -13,6 +13,14 @@ const WEARS = [
   "Battle-Scarred"
 ];
 
+const SKINPORT_CACHE_MS = 5 * 60 * 1000;
+const LIVE_PULL_INTERVAL_MS = 60 * 1000;
+const STALE_CACHE_MAX_MS = 30 * 60 * 1000;
+
+const skinScanCache = new Map();
+let itemsListCache = null;
+let lastLivePullAt = 0;
+
 function getCollectionName(item) {
   if (!item) return "Unknown Collection";
 
@@ -138,6 +146,160 @@ function normalizeSkinportHistory(item, marketHashName) {
   };
 }
 
+function buildCacheEnvelope(entry, source, note = "") {
+  const ageMs = Date.now() - entry.cached_at;
+  const expiresInMs = Math.max(0, entry.expires_at - Date.now());
+
+  return {
+    success: true,
+    source,
+    note,
+    cached: source !== "live",
+    cache_age_seconds: Math.floor(ageMs / 1000),
+    cache_expires_in_seconds: Math.floor(expiresInMs / 1000),
+    market_hash_name: entry.market_hash_name,
+    item: entry.item,
+    history: entry.history
+  };
+}
+
+function getFreshCache(marketHashName) {
+  const entry = skinScanCache.get(marketHashName);
+  if (!entry) return null;
+  if (Date.now() > entry.expires_at) return null;
+  return entry;
+}
+
+function getUsableStaleCache(marketHashName) {
+  const entry = skinScanCache.get(marketHashName);
+  if (!entry) return null;
+  if (Date.now() - entry.cached_at > STALE_CACHE_MAX_MS) return null;
+  return entry;
+}
+
+function setSkinCache(marketHashName, item, history) {
+  const now = Date.now();
+
+  const entry = {
+    market_hash_name: marketHashName,
+    item,
+    history,
+    cached_at: now,
+    expires_at: now + SKINPORT_CACHE_MS
+  };
+
+  skinScanCache.set(marketHashName, entry);
+  return entry;
+}
+
+async function getSkinportItemsList(currency = "USD") {
+  const now = Date.now();
+
+  if (itemsListCache && now < itemsListCache.expires_at) {
+    return {
+      success: true,
+      from_cache: true,
+      rows: itemsListCache.rows
+    };
+  }
+
+  const params = new URLSearchParams({
+    app_id: "730",
+    currency,
+    tradable: "0"
+  });
+
+  const url = `https://api.skinport.com/v1/items?${params.toString()}`;
+  const result = await fetchJson(url);
+
+  if (!result.success) return result;
+
+  const rows = Array.isArray(result.data) ? result.data : [];
+
+  itemsListCache = {
+    rows,
+    expires_at: now + SKINPORT_CACHE_MS
+  };
+
+  return {
+    success: true,
+    from_cache: false,
+    rows
+  };
+}
+
+async function getSkinportItemByName(marketHashName, currency = "USD") {
+  const result = await getSkinportItemsList(currency);
+
+  if (!result.success) return result;
+
+  const item = result.rows.find((x) => x.market_hash_name === marketHashName);
+
+  if (!item) {
+    return {
+      success: false,
+      error: "No Skinport item data returned",
+      market_hash_name: marketHashName
+    };
+  }
+
+  return {
+    success: true,
+    data: normalizeSkinportItem(item, marketHashName)
+  };
+}
+
+async function getSkinportHistoryByName(marketHashName, currency = "USD") {
+  const params = new URLSearchParams({
+    app_id: "730",
+    currency,
+    market_hash_name: marketHashName
+  });
+
+  const url = `https://api.skinport.com/v1/sales/history?${params.toString()}`;
+  const result = await fetchJson(url);
+
+  if (!result.success) return result;
+
+  const rows = Array.isArray(result.data) ? result.data : [];
+  const item = rows.find((x) => x.market_hash_name === marketHashName) || rows[0];
+
+  if (!item) {
+    return {
+      success: false,
+      error: "No Skinport history returned",
+      market_hash_name: marketHashName
+    };
+  }
+
+  return {
+    success: true,
+    data: normalizeSkinportHistory(item, marketHashName)
+  };
+}
+
+async function runLiveSkinScan(marketHashName, currency = "USD") {
+  const [itemResult, historyResult] = await Promise.all([
+    getSkinportItemByName(marketHashName, currency),
+    getSkinportHistoryByName(marketHashName, currency)
+  ]);
+
+  if (!itemResult.success || !historyResult.success) {
+    return {
+      success: false,
+      error: itemResult.error || historyResult.error || "Live Skinport scan failed",
+      item_error: itemResult.success ? null : itemResult.error,
+      history_error: historyResult.success ? null : historyResult.error,
+      item_preview: itemResult.preview || null,
+      history_preview: historyResult.preview || null
+    };
+  }
+
+  const entry = setSkinCache(marketHashName, itemResult.data, historyResult.data);
+
+  return buildCacheEnvelope(entry, "live", "Fresh live pull");
+}
+
 app.get("/api/skins", async (req, res) => {
   try {
     const url =
@@ -220,31 +382,10 @@ app.get("/api/skinport-item", async (req, res) => {
       });
     }
 
-    const params = new URLSearchParams({
-      app_id: "730",
-      currency,
-      tradable: "0"
-    });
+    const result = await getSkinportItemByName(market_hash_name, currency);
 
-    const url = `https://api.skinport.com/v1/items?${params.toString()}`;
-    const result = await fetchJson(url);
-
-    if (!result.success) {
-      return res.json(result);
-    }
-
-    const rows = Array.isArray(result.data) ? result.data : [];
-    const item = rows.find((x) => x.market_hash_name === market_hash_name);
-
-    if (!item) {
-      return res.json({
-        success: false,
-        error: "No Skinport item data returned",
-        market_hash_name
-      });
-    }
-
-    res.json(normalizeSkinportItem(item, market_hash_name));
+    if (!result.success) return res.json(result);
+    res.json(result.data);
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -264,31 +405,10 @@ app.get("/api/skinport-history", async (req, res) => {
       });
     }
 
-    const params = new URLSearchParams({
-      app_id: "730",
-      currency,
-      market_hash_name
-    });
+    const result = await getSkinportHistoryByName(market_hash_name, currency);
 
-    const url = `https://api.skinport.com/v1/sales/history?${params.toString()}`;
-    const result = await fetchJson(url);
-
-    if (!result.success) {
-      return res.json(result);
-    }
-
-    const rows = Array.isArray(result.data) ? result.data : [];
-    const item = rows.find((x) => x.market_hash_name === market_hash_name) || rows[0];
-
-    if (!item) {
-      return res.json({
-        success: false,
-        error: "No Skinport history returned",
-        market_hash_name
-      });
-    }
-
-    res.json(normalizeSkinportHistory(item, market_hash_name));
+    if (!result.success) return res.json(result);
+    res.json(result.data);
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -299,15 +419,82 @@ app.get("/api/skinport-history", async (req, res) => {
 
 app.get("/api/test-skinport", async (req, res) => {
   try {
-    const params = new URLSearchParams({
-      app_id: "730",
-      currency: "USD",
-      tradable: "0"
-    });
-
-    const url = `https://api.skinport.com/v1/items?${params.toString()}`;
-    const result = await fetchJson(url);
+    const result = await getSkinportItemsList("USD");
     res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+app.get("/api/scan-skin", async (req, res) => {
+  try {
+    const { market_hash_name, currency = "USD", force_live = "0" } = req.query;
+
+    if (!market_hash_name) {
+      return res.status(400).json({
+        success: false,
+        error: "market_hash_name required"
+      });
+    }
+
+    const freshCache = getFreshCache(market_hash_name);
+    if (freshCache && force_live !== "1") {
+      return res.json(buildCacheEnvelope(freshCache, "cache", "Fresh cached result"));
+    }
+
+    const now = Date.now();
+    const msUntilLive = Math.max(0, lastLivePullAt + LIVE_PULL_INTERVAL_MS - now);
+
+    if (msUntilLive > 0) {
+      const stale = getUsableStaleCache(market_hash_name);
+
+      if (stale) {
+        return res.json({
+          ...buildCacheEnvelope(stale, "cached-limit", "Live pull blocked, using cached result"),
+          live_available_in_seconds: Math.ceil(msUntilLive / 1000)
+        });
+      }
+
+      return res.status(429).json({
+        success: false,
+        error: "Live pull cooldown active",
+        live_available_in_seconds: Math.ceil(msUntilLive / 1000),
+        note: "No cached result available yet for this skin"
+      });
+    }
+
+    lastLivePullAt = now;
+
+    const liveResult = await runLiveSkinScan(market_hash_name, currency);
+
+    if (liveResult.success) {
+      return res.json({
+        ...liveResult,
+        live_available_in_seconds: Math.ceil(LIVE_PULL_INTERVAL_MS / 1000)
+      });
+    }
+
+    const stale = getUsableStaleCache(market_hash_name);
+
+    if (stale) {
+      return res.json({
+        ...buildCacheEnvelope(stale, "stale-cache", "Live pull failed, using stale cached result"),
+        live_available_in_seconds: Math.ceil(LIVE_PULL_INTERVAL_MS / 1000),
+        live_error: liveResult.error,
+        item_error: liveResult.item_error || null,
+        history_error: liveResult.history_error || null
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: liveResult.error || "Live pull failed",
+      item_error: liveResult.item_error || null,
+      history_error: liveResult.history_error || null
+    });
   } catch (err) {
     res.status(500).json({
       success: false,
