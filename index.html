@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Collection Scanner</title>
+  <title>Skinport Collection Scanner</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -284,7 +284,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Steam Collection Scanner</h1>
+    <h1>Skinport Collection Scanner</h1>
 
     <div id="datasetStatus" class="muted">
       Loading full skin database...
@@ -303,7 +303,7 @@
       <div id="dropdown" class="dropdown" style="display:none;"></div>
     </div>
 
-    <button id="searchButton" disabled>Search</button>
+    <button id="searchButton" onclick="manualSearch()" disabled>Search</button>
 
     <div id="summary" class="summary">No search yet.</div>
 
@@ -314,7 +314,7 @@
         <div class="pump-rating">No item analyzed yet</div>
         <div class="pump-sub">Search an item to generate a score.</div>
         <ul class="pump-list">
-          <li>The score uses current lowest listing plus 7-day history when available.</li>
+          <li>The score uses current Skinport market data plus recent Skinport sales history.</li>
           <li>This is a live signal, not a guarantee.</li>
         </ul>
       </div>
@@ -350,7 +350,6 @@
     let currentMatches = [];
     let activeIndex = -1;
     let COLLECTION_MAP = {};
-    let scanInProgress = false;
 
     const WEAR_PRIORITY = [
       "Factory New",
@@ -359,9 +358,6 @@
       "Well-Worn",
       "Battle-Scarred"
     ];
-
-    const DEFAULT_COUNTRY = "US";
-    const DEFAULT_CURRENCY = "1";
 
     async function loadSkinDatabase() {
       try {
@@ -416,17 +412,11 @@
       collectionButtons.innerHTML = collectionNames.map(name => {
         const baseCount = Object.keys(COLLECTION_MAP[name]).length;
         return `
-          <button class="secondary-button" data-collection="${escapeAttr(name)}">
+          <button class="secondary-button" onclick="scanCollectionByName('${escapeJs(name)}')">
             ${escapeHtml(name)} (${baseCount})
           </button>
         `;
       }).join("");
-
-      collectionButtons.querySelectorAll("button[data-collection]").forEach(button => {
-        button.addEventListener("click", () => {
-          scanCollectionByName(button.dataset.collection);
-        });
-      });
     }
 
     function normalize(text) {
@@ -513,79 +503,83 @@
       dropdown.innerHTML = "";
       currentMatches = [];
       activeIndex = -1;
-      searchSteamPrice(item);
-    }
-
-    function parseMoney(value) {
-      if (typeof value === "number") return value;
-      if (typeof value !== "string") return NaN;
-
-      let cleaned = value.replace(/[^0-9.,-]/g, "");
-
-      if (cleaned.includes(",") && cleaned.includes(".")) {
-        cleaned = cleaned.replace(/,/g, "");
-      } else if (cleaned.includes(",") && !cleaned.includes(".")) {
-        cleaned = cleaned.replace(",", ".");
-      }
-
-      return parseFloat(cleaned);
+      searchSkin(item);
     }
 
     function formatUsd(value) {
-      if (!Number.isFinite(value)) return "N/A";
-      return `$${value.toFixed(2)}`;
+      return Number.isFinite(value) ? `$${value.toFixed(2)}` : "N/A";
     }
 
-    function getHistoryStatusText(historyData) {
-      if (historyData?.error) return historyData.error;
-      if (Number.isFinite(historyData?.sales_7d) && historyData.sales_7d === 0) {
-        return "No sales in the last 7 days";
+    function pickHistoryBlock(historyData) {
+      const options = [
+        historyData?.last_7_days,
+        historyData?.last_30_days,
+        historyData?.last_90_days
+      ];
+
+      for (const block of options) {
+        if (block && Number(block.volume) > 0 && Number.isFinite(block.median)) {
+          return block;
+        }
       }
-      return "OK";
+
+      return null;
     }
 
-    function buildDataQuality(priceData, historyData) {
-      const hasLowest = Number.isFinite(parseMoney(priceData?.lowest_price));
-      const hasHistoryMedian = Number.isFinite(historyData?.median_7d);
-      const hasHistorySales = Number.isFinite(historyData?.sales_7d) && historyData.sales_7d > 0;
-      const hasHistoryError = !!historyData?.error;
+    function buildDataQuality(itemData, historyData) {
+      const hasLowest = Number.isFinite(itemData?.lowest_price);
+      const hasMedian = Number.isFinite(itemData?.median_price);
+      const hasListings = Number.isFinite(itemData?.listing_count);
 
-      if (hasLowest && hasHistoryMedian && hasHistorySales) {
+      const hist7 = historyData?.last_7_days;
+      const hist30 = historyData?.last_30_days;
+      const hist90 = historyData?.last_90_days;
+
+      const usable7 = hist7 && Number(hist7.volume) > 0 && Number.isFinite(hist7.median);
+      const usable30 = hist30 && Number(hist30.volume) > 0 && Number.isFinite(hist30.median);
+      const usable90 = hist90 && Number(hist90.volume) > 0 && Number.isFinite(hist90.median);
+
+      if (hasLowest && hasMedian && hasListings && usable7) {
         return {
           label: "Full",
-          detail: "Lowest listing + 7d median + 7d sales",
+          detail: "Current market + 7d sales history",
           className: "tag-high"
         };
       }
 
-      if (hasLowest && hasHistoryError) {
+      if (hasLowest && hasMedian && (usable30 || usable90)) {
         return {
-          label: "History Missing",
-          detail: historyData.error,
-          className: "tag-data"
+          label: "Partial",
+          detail: "Using longer sales window fallback",
+          className: "tag-watch"
         };
       }
 
-      if (hasLowest) {
+      if (hasLowest || hasMedian) {
         return {
-          label: "Partial",
-          detail: "Lowest listing found, but weak sales history",
-          className: "tag-watch"
+          label: "Market Only",
+          detail: "Sales history weak or missing",
+          className: "tag-data"
         };
       }
 
       return {
         label: "Insufficient",
-        detail: "No usable market data returned",
+        detail: "No usable Skinport data returned",
         className: "tag-low"
       };
     }
 
-    function buildPumpScore(priceData, historyData) {
-      const lowest = parseMoney(priceData?.lowest_price);
-      const historyMedian = Number.isFinite(historyData?.median_7d) ? historyData.median_7d : NaN;
-      const sales7d = Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : NaN;
-      const quality = buildDataQuality(priceData, historyData);
+    function buildPumpScore(itemData, historyData) {
+      const lowest = Number(itemData?.lowest_price);
+      const currentMedian = Number(itemData?.median_price);
+      const listingCount = Number(itemData?.listing_count);
+
+      const block = pickHistoryBlock(historyData);
+      const historyMedian = block ? Number(block.median) : NaN;
+      const historyVolume = block ? Number(block.volume) : NaN;
+
+      const quality = buildDataQuality(itemData, historyData);
       const reasons = [];
 
       if (!Number.isFinite(lowest) || !Number.isFinite(historyMedian) || historyMedian <= 0) {
@@ -593,10 +587,10 @@
           score: null,
           rating: "Insufficient Data",
           className: "pump-low",
-          sub: `Lowest: ${formatUsd(lowest)} | 7d Median: N/A | 7d Sales: ${Number.isFinite(sales7d) ? sales7d : "N/A"}`,
+          sub: `Lowest: ${formatUsd(lowest)} | Sales Median: N/A | Sales Volume: ${Number.isFinite(historyVolume) ? historyVolume : "N/A"}`,
           reasons: [
-            "Could not build a reliable 7-day sales baseline.",
-            "This item may have blocked history, no valid recent sales, or Steam may have returned a bad response."
+            "Could not build a reliable recent sales baseline from Skinport.",
+            "This item may have weak recent volume even if current listings exist."
           ],
           quality
         };
@@ -605,34 +599,46 @@
       const premium = ((lowest - historyMedian) / historyMedian) * 100;
       let score = 0;
 
-      if (premium >= 40) {
-        score += 40;
-        reasons.push("Current lowest listing is far above the 7-day sales median.");
+      if (premium >= 35) {
+        score += 38;
+        reasons.push("Current floor is far above recent Skinport sales median.");
       } else if (premium >= 20) {
-        score += 28;
-        reasons.push("Current lowest listing is well above the 7-day sales median.");
+        score += 26;
+        reasons.push("Current floor is well above recent sales median.");
       } else if (premium >= 8) {
-        score += 18;
-        reasons.push("Current lowest listing is above the 7-day sales median.");
+        score += 16;
+        reasons.push("Current floor is above recent sales median.");
       } else if (premium <= -5) {
         score -= 10;
-        reasons.push("Current lowest listing is below the 7-day sales median.");
+        reasons.push("Current floor is below recent sales median.");
       } else {
-        reasons.push("Current lowest listing is close to the 7-day sales median.");
+        reasons.push("Current floor is close to recent sales median.");
       }
 
-      if (Number.isFinite(sales7d)) {
-        if (sales7d <= 2) {
+      if (Number.isFinite(historyVolume)) {
+        if (historyVolume <= 2) {
           score += 30;
-          reasons.push("Very low 7-day sales count suggests thin liquidity.");
-        } else if (sales7d <= 5) {
+          reasons.push("Very low recent sales volume suggests thin liquidity.");
+        } else if (historyVolume <= 5) {
           score += 20;
-          reasons.push("Low 7-day sales count supports faster moves.");
-        } else if (sales7d <= 10) {
+          reasons.push("Low recent sales volume supports faster moves.");
+        } else if (historyVolume <= 10) {
           score += 10;
-          reasons.push("Moderate 7-day sales count gives some room for movement.");
-        } else if (sales7d >= 40) {
-          reasons.push("High 7-day sales count makes quick pumps harder.");
+          reasons.push("Moderate recent sales volume gives some room for movement.");
+        } else if (historyVolume >= 40) {
+          reasons.push("High recent sales volume makes quick pumps harder.");
+        }
+      }
+
+      if (Number.isFinite(listingCount)) {
+        if (listingCount <= 3) {
+          score += 18;
+          reasons.push("Very few active listings can make the floor easier to move.");
+        } else if (listingCount <= 8) {
+          score += 10;
+          reasons.push("Low active listing count supports thinner supply.");
+        } else if (listingCount >= 40) {
+          reasons.push("Large active listing count makes sharp moves harder.");
         }
       }
 
@@ -666,7 +672,7 @@
         score,
         rating,
         className,
-        sub: `Lowest: ${formatUsd(lowest)} | 7d Median: ${formatUsd(historyMedian)} | Premium: ${premium.toFixed(2)}% | 7d Sales: ${Number.isFinite(sales7d) ? sales7d : "N/A"}`,
+        sub: `Lowest: ${formatUsd(lowest)} | Sales Median: ${formatUsd(historyMedian)} | Premium: ${premium.toFixed(2)}% | Sales Volume: ${Number.isFinite(historyVolume) ? historyVolume : "N/A"} | Listings: ${Number.isFinite(listingCount) ? listingCount : "N/A"}`,
         reasons,
         quality
       };
@@ -688,108 +694,87 @@
           ${result.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}
         </ul>
         <div class="small-note">
-          This score compares the current lowest listing against 7-day Steam sales history when available.
+          This score compares current Skinport market data against recent Skinport sales history when available.
         </div>
       `;
     }
 
-    async function fetchSteamPrice(name) {
+    async function fetchSkinportItem(name) {
       const params = new URLSearchParams({
-        market_hash_name: name,
-        country: DEFAULT_COUNTRY,
-        currency: DEFAULT_CURRENCY
+        market_hash_name: name
       });
 
-      async function tryFetch() {
-        const res = await fetch(`/api/steam-price?${params.toString()}`, {
-          headers: { Accept: "application/json" }
-        });
-
-        try {
-          return await res.json();
-        } catch {
-          return null;
-        }
-      }
-
-      let data = await tryFetch();
-
-      if (!data) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        data = await tryFetch();
-      }
-
-      return data || {
-        success: false,
-        lowest_price: null,
-        median_price: null,
-        volume: null,
-        error: "Steam returned invalid response"
-      };
-    }
-
-    async function fetchSteamHistory(name) {
-      const params = new URLSearchParams({
-        market_hash_name: name,
-        country: DEFAULT_COUNTRY,
-        currency: DEFAULT_CURRENCY
+      const res = await fetch(`/api/skinport-item?${params.toString()}`, {
+        headers: { Accept: "application/json" }
       });
 
-      async function tryFetch() {
-        const res = await fetch(`/api/steam-history?${params.toString()}`, {
-          headers: { Accept: "application/json" }
-        });
-
-        try {
-          return await res.json();
-        } catch {
-          return null;
-        }
-      }
-
-      let data = await tryFetch();
-
-      if (!data) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        data = await tryFetch();
-      }
-
-      return data || {
-        success: false,
-        error: "Steam history unavailable"
-      };
+      return res.json();
     }
 
-    async function searchSteamPrice(name) {
+    async function fetchSkinportHistory(name) {
+      const params = new URLSearchParams({
+        market_hash_name: name
+      });
+
+      const res = await fetch(`/api/skinport-history?${params.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+
+      return res.json();
+    }
+
+    function buildHistoryStatus(historyData) {
+      if (historyData?.success === false) {
+        return historyData.error || "History unavailable";
+      }
+
+      const d7 = historyData?.last_7_days;
+      const d30 = historyData?.last_30_days;
+      const d90 = historyData?.last_90_days;
+
+      if (d7 && Number(d7.volume) > 0) return "Using 7d history";
+      if (d30 && Number(d30.volume) > 0) return "Using 30d fallback";
+      if (d90 && Number(d90.volume) > 0) return "Using 90d fallback";
+
+      return "No recent sales";
+    }
+
+    async function searchSkin(name) {
       summary.textContent = "Loading...";
 
       pumpBox.className = "pump-box pump-watch";
       pumpBox.innerHTML = `
         <div class="pump-score">-- / 100</div>
         <div class="pump-rating">Calculating...</div>
-        <div class="pump-sub">Reading current listings and 7-day sales.</div>
+        <div class="pump-sub">Reading Skinport market and history data.</div>
         <ul class="pump-list">
-          <li>Checking lowest listing</li>
-          <li>Checking 7-day sales history</li>
+          <li>Checking current lowest price</li>
+          <li>Checking recent sales history</li>
           <li>Building confidence score</li>
         </ul>
       `;
 
       try {
-        const [priceData, historyData] = await Promise.all([
-          fetchSteamPrice(name),
-          fetchSteamHistory(name)
+        const [itemData, historyData] = await Promise.all([
+          fetchSkinportItem(name),
+          fetchSkinportHistory(name)
         ]);
 
         summary.textContent =
 `Item: ${name}
-Lowest price: ${priceData?.lowest_price || "N/A"}
-7d median sale: ${Number.isFinite(historyData?.median_7d) ? formatUsd(historyData.median_7d) : "N/A"}
-7d sales count: ${Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : "N/A"}
-7d average sale: ${Number.isFinite(historyData?.average_7d) ? formatUsd(historyData.average_7d) : "N/A"}
-History status: ${getHistoryStatusText(historyData)}`;
+Current lowest price: ${formatUsd(Number(itemData?.lowest_price))}
+Current median listing: ${formatUsd(Number(itemData?.median_price))}
+Current average listing: ${formatUsd(Number(itemData?.average_price))}
+Active listings: ${Number.isFinite(Number(itemData?.listing_count)) ? Number(itemData.listing_count) : "N/A"}
+7d median sale: ${formatUsd(Number(historyData?.last_7_days?.median))}
+7d sales volume: ${Number.isFinite(Number(historyData?.last_7_days?.volume)) ? Number(historyData.last_7_days.volume) : "N/A"}
+30d median sale: ${formatUsd(Number(historyData?.last_30_days?.median))}
+30d sales volume: ${Number.isFinite(Number(historyData?.last_30_days?.volume)) ? Number(historyData.last_30_days.volume) : "N/A"}
+90d median sale: ${formatUsd(Number(historyData?.last_90_days?.median))}
+90d sales volume: ${Number.isFinite(Number(historyData?.last_90_days?.volume)) ? Number(historyData.last_90_days.volume) : "N/A"}
+History status: ${buildHistoryStatus(historyData)}`;
 
-        const result = buildPumpScore(priceData, historyData);
+        const result = buildPumpScore(itemData, historyData);
         renderPumpScore(result);
       } catch (err) {
         summary.textContent = `Error: ${err.message}`;
@@ -834,8 +819,6 @@ History status: ${getHistoryStatusText(historyData)}`;
     }
 
     async function scanCollectionByName(collectionName) {
-      if (scanInProgress) return;
-
       if (!SKINS_READY) {
         scannerStatus.textContent = "Skin database is still loading.";
         return;
@@ -848,98 +831,106 @@ History status: ${getHistoryStatusText(historyData)}`;
         return;
       }
 
-      scanInProgress = true;
       disableCollectionButtons(true);
       scannerList.innerHTML = "";
       scannerStatus.textContent = `Preparing to scan ${pool.length} skins from ${collectionName}...`;
 
       const results = [];
 
-      try {
-        for (let i = 0; i < pool.length; i++) {
-          const skin = pool[i];
+      for (let i = 0; i < pool.length; i++) {
+        const skin = pool[i];
 
-          scannerStatus.textContent =
+        scannerStatus.textContent =
 `Scanning ${collectionName}
 ${i + 1} / ${pool.length}
 
 Current:
 ${skin.market_hash_name}`;
 
-          try {
-            const [priceData, historyData] = await Promise.all([
-              fetchSteamPrice(skin.market_hash_name),
-              fetchSteamHistory(skin.market_hash_name)
-            ]);
+        try {
+          const [itemData, historyData] = await Promise.all([
+            fetchSkinportItem(skin.market_hash_name),
+            fetchSkinportHistory(skin.market_hash_name)
+          ]);
 
-            const result = buildPumpScore(priceData, historyData);
+          const result = buildPumpScore(itemData, historyData);
 
-            results.push({
-              name: skin.market_hash_name,
-              wear: skin.wear_label,
-              lowest: priceData?.lowest_price || "N/A",
-              median_7d: Number.isFinite(historyData?.median_7d) ? formatUsd(historyData.median_7d) : "N/A",
-              sales_7d: Number.isFinite(historyData?.sales_7d) ? historyData.sales_7d : "N/A",
-              history_status: getHistoryStatusText(historyData),
-              score: result.score,
-              rating: result.rating,
-              quality: result.quality,
-              tagClass: result.quality.className,
-              sub: result.sub
-            });
-          } catch (err) {
-            results.push({
-              name: skin.market_hash_name,
-              wear: skin.wear_label,
-              lowest: "N/A",
-              median_7d: "N/A",
-              sales_7d: "N/A",
-              history_status: "Request failed",
-              score: null,
-              rating: "Error",
-              quality: {
-                label: "Insufficient",
-                detail: "Request failed",
-                className: "tag-low"
-              },
-              tagClass: "tag-low",
-              sub: err.message
-            });
-          }
-
-          results.sort((a, b) => {
-            const aScore = a.score === null ? -1 : a.score;
-            const bScore = b.score === null ? -1 : b.score;
-            return bScore - aScore || a.name.localeCompare(b.name);
+          results.push({
+            name: skin.market_hash_name,
+            wear: skin.wear_label,
+            lowest: formatUsd(Number(itemData?.lowest_price)),
+            currentMedian: formatUsd(Number(itemData?.median_price)),
+            listings: Number.isFinite(Number(itemData?.listing_count)) ? Number(itemData.listing_count) : "N/A",
+            histMedian7: formatUsd(Number(historyData?.last_7_days?.median)),
+            histVolume7: Number.isFinite(Number(historyData?.last_7_days?.volume)) ? Number(historyData.last_7_days.volume) : "N/A",
+            histMedian30: formatUsd(Number(historyData?.last_30_days?.median)),
+            histVolume30: Number.isFinite(Number(historyData?.last_30_days?.volume)) ? Number(historyData.last_30_days.volume) : "N/A",
+            historyStatus: buildHistoryStatus(historyData),
+            score: result.score,
+            rating: result.rating,
+            quality: result.quality,
+            tagClass: result.quality.className,
+            sub: result.sub
           });
-
-          scannerList.innerHTML = results.map((item, index) => `
-            <div class="scanner-item">
-              <div class="scanner-rank">#${index + 1}</div>
-              <div class="scanner-name">${escapeHtml(item.name)}</div>
-              <div class="scanner-meta">Wear: ${escapeHtml(item.wear)}
-Score: ${item.score === null ? "--" : `${item.score} / 100`}
-Rating: ${escapeHtml(item.rating)}
-Lowest: ${escapeHtml(item.lowest)}
-7d Median Sale: ${escapeHtml(item.median_7d)}
-7d Sales Count: ${escapeHtml(String(item.sales_7d))}
-History Status: ${escapeHtml(item.history_status)}</div>
-              <div class="scanner-tag ${item.tagClass}">Market Data Quality: ${escapeHtml(item.quality.label)} — ${escapeHtml(item.quality.detail)}</div>
-              <div class="small-note" style="margin-top:10px;">${escapeHtml(item.sub)}</div>
-            </div>
-          `).join("");
-
-          await new Promise(resolve => setTimeout(resolve, 4200 + Math.random() * 1200));
+        } catch (err) {
+          results.push({
+            name: skin.market_hash_name,
+            wear: skin.wear_label,
+            lowest: "N/A",
+            currentMedian: "N/A",
+            listings: "N/A",
+            histMedian7: "N/A",
+            histVolume7: "N/A",
+            histMedian30: "N/A",
+            histVolume30: "N/A",
+            historyStatus: "Request failed",
+            score: null,
+            rating: "Error",
+            quality: {
+              label: "Insufficient",
+              detail: "Request failed",
+              className: "tag-low"
+            },
+            tagClass: "tag-low",
+            sub: err.message
+          });
         }
 
-        scannerStatus.textContent =
+        results.sort((a, b) => {
+          const aScore = a.score === null ? -1 : a.score;
+          const bScore = b.score === null ? -1 : b.score;
+          return bScore - aScore || a.name.localeCompare(b.name);
+        });
+
+        scannerList.innerHTML = results.map((item, index) => `
+          <div class="scanner-item">
+            <div class="scanner-rank">#${index + 1}</div>
+            <div class="scanner-name">${escapeHtml(item.name)}</div>
+            <div class="scanner-meta">Wear: ${escapeHtml(item.wear)}
+Score: ${item.score === null ? "--" : `${item.score} / 100`}
+Rating: ${escapeHtml(item.rating)}
+Current Lowest: ${escapeHtml(item.lowest)}
+Current Median Listing: ${escapeHtml(item.currentMedian)}
+Active Listings: ${escapeHtml(String(item.listings))}
+7d Median Sale: ${escapeHtml(item.histMedian7)}
+7d Sales Volume: ${escapeHtml(String(item.histVolume7))}
+30d Median Sale: ${escapeHtml(item.histMedian30)}
+30d Sales Volume: ${escapeHtml(String(item.histVolume30))}
+History Status: ${escapeHtml(item.historyStatus)}</div>
+            <div class="scanner-tag ${item.tagClass}">Market Data Quality: ${escapeHtml(item.quality.label)} — ${escapeHtml(item.quality.detail)}</div>
+            <div class="small-note" style="margin-top:10px;">${escapeHtml(item.sub)}</div>
+          </div>
+        `).join("");
+
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
+      scannerStatus.textContent =
 `${collectionName} scan complete.
 Scanned: ${pool.length}
 Showing all results sorted by score.`;
-      } finally {
-        scanInProgress = false;
-        disableCollectionButtons(false);
-      }
+
+      disableCollectionButtons(false);
     }
 
     function manualSearch() {
@@ -962,7 +953,7 @@ Showing all results sorted by score.`;
         return;
       }
 
-      searchSteamPrice(typed);
+      searchSkin(typed);
     }
 
     function escapeHtml(str) {
@@ -976,6 +967,12 @@ Showing all results sorted by score.`;
 
     function escapeAttr(str) {
       return escapeHtml(str);
+    }
+
+    function escapeJs(str) {
+      return String(str)
+        .replaceAll("\\", "\\\\")
+        .replaceAll("'", "\\'");
     }
 
     input.addEventListener("input", () => {
@@ -1024,8 +1021,6 @@ Showing all results sorted by score.`;
         dropdown.style.display = "none";
       }
     });
-
-    searchButton.addEventListener("click", manualSearch);
 
     loadSkinDatabase();
   </script>
