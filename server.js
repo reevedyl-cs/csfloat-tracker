@@ -165,14 +165,18 @@ async function fetchCsfloatListings(marketHashName) {
     } catch {
       return {
         success: false,
-        error: "CSFloat returned invalid JSON"
+        error: "CSFloat returned invalid JSON",
+        status: response.status,
+        preview: text.slice(0, 300)
       };
     }
 
     if (!response.ok) {
       return {
         success: false,
-        error: `CSFloat request failed: ${response.status}`
+        error: `CSFloat request failed: ${response.status}`,
+        status: response.status,
+        body: data
       };
     }
 
