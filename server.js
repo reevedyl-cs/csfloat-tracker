@@ -140,14 +140,45 @@ function summarizeCsfloatListings(data, marketHashName) {
 }
 
 async function fetchCsfloatListings(marketHashName) {
-  const apiKey = process.env.CSFLOAT_API_KEY;
 
-  if (!apiKey) {
+  const params = new URLSearchParams({
+    market_hash_name: marketHashName,
+    sort_by: "lowest_price",
+    limit: "50"
+  });
+
+  const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
+
+  try {
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `CSFloat request failed: ${response.status}`
+      };
+    }
+
+    return summarizeCsfloatListings(data, marketHashName);
+
+  } catch (err) {
+
     return {
       success: false,
-      error: "Missing CSFLOAT_API_KEY"
+      error: err.message
     };
+
   }
+
+}
 
   const params = new URLSearchParams({
     market_hash_name: marketHashName,
