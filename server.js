@@ -66,127 +66,76 @@ function buildMarketHashName(item, wearName) {
   return `${weaponName} | ${cleanedName} (${wearName})`;
 }
 
-function median(values) {
-  if (!values.length) return null;
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "br",
+      "User-Agent": "Mozilla/5.0"
+    }
+  });
 
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
+  const text = await response.text();
 
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
   }
 
-  return sorted[mid];
-}
-
-function summarizeCsfloatListings(data, marketHashName) {
-  const listings = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.data)
-      ? data.data
-      : [];
-
-  const normalized = listings
-    .filter((listing) => listing && typeof listing === "object")
-    .map((listing) => {
-      const cents = Number(listing.price);
-      const dollars = Number.isFinite(cents) ? cents / 100 : NaN;
-
-      return {
-        id: listing.id || null,
-        price_cents: cents,
-        price: dollars,
-        market_hash_name:
-          listing.item?.market_hash_name ||
-          listing.market_hash_name ||
-          marketHashName ||
-          null,
-        float_value: listing.item?.float_value ?? null
-      };
-    })
-    .filter((x) => Number.isFinite(x.price) && x.price > 0);
-
-  if (!normalized.length) {
+  if (!response.ok) {
     return {
       success: false,
-      error: "No CSFloat listings returned",
-      market_hash_name: marketHashName,
-      lowest_price: null,
-      median_price: null,
-      average_price: null,
-      listing_count: 0,
-      spread_percent: null,
-      listings: []
+      status: response.status,
+      error: `Request failed: ${response.status}`,
+      preview: text.slice(0, 300)
     };
   }
 
-  const prices = normalized.map((x) => x.price).sort((a, b) => a - b);
-  const lowest = prices[0];
-  const med = median(prices);
-  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
-  const highest = prices[prices.length - 1];
-  const spreadPercent = lowest > 0 ? ((highest - lowest) / lowest) * 100 : null;
+  if (!data) {
+    return {
+      success: false,
+      status: response.status,
+      error: "Endpoint returned invalid JSON",
+      preview: text.slice(0, 300)
+    };
+  }
 
   return {
     success: true,
-    market_hash_name: normalized[0].market_hash_name || marketHashName,
-    lowest_price: lowest,
-    median_price: med,
-    average_price: avg,
-    highest_price: highest,
-    listing_count: normalized.length,
-    spread_percent: spreadPercent,
-    listings: normalized
+    data
   };
 }
 
-async function fetchCsfloatListings(marketHashName) {
-  const params = new URLSearchParams({
-    market_hash_name: marketHashName,
-    sort_by: "lowest_price",
-    limit: "50"
-  });
+function normalizeSkinportItem(item, marketHashName) {
+  return {
+    success: true,
+    market_hash_name: item?.market_hash_name || marketHashName,
+    currency: item?.currency || "USD",
+    lowest_price: item?.min_price ?? null,
+    highest_price: item?.max_price ?? null,
+    average_price: item?.mean_price ?? null,
+    median_price: item?.median_price ?? null,
+    listing_count: item?.quantity ?? 0,
+    suggested_price: item?.suggested_price ?? null,
+    item_page: item?.item_page || null,
+    market_page: item?.market_page || null
+  };
+}
 
-  const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
-
-    const text = await response.text();
-
-    let data = null;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      return {
-        success: false,
-        error: "CSFloat returned invalid JSON",
-        status: response.status,
-        preview: text.slice(0, 300)
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `CSFloat request failed: ${response.status}`,
-        status: response.status,
-        body: data
-      };
-    }
-
-    return summarizeCsfloatListings(data, marketHashName);
-  } catch (err) {
-    return {
-      success: false,
-      error: err.message
-    };
-  }
+function normalizeSkinportHistory(item, marketHashName) {
+  return {
+    success: true,
+    market_hash_name: item?.market_hash_name || marketHashName,
+    currency: item?.currency || "USD",
+    last_24_hours: item?.last_24_hours || null,
+    last_7_days: item?.last_7_days || null,
+    last_30_days: item?.last_30_days || null,
+    last_90_days: item?.last_90_days || null,
+    item_page: item?.item_page || null,
+    market_page: item?.market_page || null
+  };
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -260,15 +209,9 @@ app.get("/api/skins", async (req, res) => {
   }
 });
 
-app.get("/api/test-csfloat-key", (req, res) => {
-  res.json({
-    hasKey: !!process.env.CSFLOAT_API_KEY
-  });
-});
-
-app.get("/api/csfloat-price", async (req, res) => {
+app.get("/api/skinport-item", async (req, res) => {
   try {
-    const { market_hash_name } = req.query;
+    const { market_hash_name, currency = "USD" } = req.query;
 
     if (!market_hash_name) {
       return res.status(400).json({
@@ -277,8 +220,94 @@ app.get("/api/csfloat-price", async (req, res) => {
       });
     }
 
-    const data = await fetchCsfloatListings(market_hash_name);
-    res.json(data);
+    const params = new URLSearchParams({
+      app_id: "730",
+      currency,
+      market_hash_name
+    });
+
+    const url = `https://api.skinport.com/v1/items?${params.toString()}`;
+    const result = await fetchJson(url);
+
+    if (!result.success) {
+      return res.json(result);
+    }
+
+    const rows = Array.isArray(result.data) ? result.data : [];
+    const item = rows.find((x) => x.market_hash_name === market_hash_name) || rows[0];
+
+    if (!item) {
+      return res.json({
+        success: false,
+        error: "No Skinport item data returned",
+        market_hash_name
+      });
+    }
+
+    res.json(normalizeSkinportItem(item, market_hash_name));
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+app.get("/api/skinport-history", async (req, res) => {
+  try {
+    const { market_hash_name, currency = "USD" } = req.query;
+
+    if (!market_hash_name) {
+      return res.status(400).json({
+        success: false,
+        error: "market_hash_name required"
+      });
+    }
+
+    const params = new URLSearchParams({
+      app_id: "730",
+      currency,
+      market_hash_name
+    });
+
+    const url = `https://api.skinport.com/v1/sales/history?${params.toString()}`;
+    const result = await fetchJson(url);
+
+    if (!result.success) {
+      return res.json(result);
+    }
+
+    const rows = Array.isArray(result.data) ? result.data : [];
+    const item = rows.find((x) => x.market_hash_name === market_hash_name) || rows[0];
+
+    if (!item) {
+      return res.json({
+        success: false,
+        error: "No Skinport history returned",
+        market_hash_name
+      });
+    }
+
+    res.json(normalizeSkinportHistory(item, market_hash_name));
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+app.get("/api/test-skinport", async (req, res) => {
+  try {
+    const params = new URLSearchParams({
+      app_id: "730",
+      currency: "USD",
+      market_hash_name: "AK-47 | Redline (Field-Tested)"
+    });
+
+    const url = `https://api.skinport.com/v1/items?${params.toString()}`;
+    const result = await fetchJson(url);
+    res.json(result);
   } catch (err) {
     res.status(500).json({
       success: false,
