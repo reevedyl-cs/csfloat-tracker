@@ -68,6 +68,7 @@ function buildMarketHashName(item, wearName) {
 
 function median(values) {
   if (!values.length) return null;
+
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
 
@@ -79,11 +80,15 @@ function median(values) {
 }
 
 function summarizeCsfloatListings(data, marketHashName) {
-  const listings = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+  const listings = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+      ? data.data
+      : [];
 
   const normalized = listings
-    .filter(listing => listing && typeof listing === "object")
-    .map(listing => {
+    .filter((listing) => listing && typeof listing === "object")
+    .map((listing) => {
       const cents = Number(listing.price);
       const dollars = Number.isFinite(cents) ? cents / 100 : NaN;
 
@@ -91,19 +96,15 @@ function summarizeCsfloatListings(data, marketHashName) {
         id: listing.id || null,
         price_cents: cents,
         price: dollars,
-        type: listing.type || null,
-        state: listing.state || null,
-        item: listing.item || null,
         market_hash_name:
           listing.item?.market_hash_name ||
           listing.market_hash_name ||
           marketHashName ||
           null,
-        float_value: listing.item?.float_value ?? null,
-        seller: listing.seller || null
+        float_value: listing.item?.float_value ?? null
       };
     })
-    .filter(x => Number.isFinite(x.price) && x.price > 0);
+    .filter((x) => Number.isFinite(x.price) && x.price > 0);
 
   if (!normalized.length) {
     return {
@@ -119,7 +120,7 @@ function summarizeCsfloatListings(data, marketHashName) {
     };
   }
 
-  const prices = normalized.map(x => x.price).sort((a, b) => a - b);
+  const prices = normalized.map((x) => x.price).sort((a, b) => a - b);
   const lowest = prices[0];
   const med = median(prices);
   const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
@@ -140,7 +141,6 @@ function summarizeCsfloatListings(data, marketHashName) {
 }
 
 async function fetchCsfloatListings(marketHashName) {
-
   const params = new URLSearchParams({
     market_hash_name: marketHashName,
     sort_by: "lowest_price",
@@ -150,7 +150,6 @@ async function fetchCsfloatListings(marketHashName) {
   const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
 
   try {
-
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
@@ -158,7 +157,17 @@ async function fetchCsfloatListings(marketHashName) {
       }
     });
 
-    const data = await response.json();
+    const text = await response.text();
+
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return {
+        success: false,
+        error: "CSFloat returned invalid JSON"
+      };
+    }
 
     if (!response.ok) {
       return {
@@ -168,102 +177,12 @@ async function fetchCsfloatListings(marketHashName) {
     }
 
     return summarizeCsfloatListings(data, marketHashName);
-
   } catch (err) {
-
     return {
       success: false,
       error: err.message
     };
-
   }
-
-}
-
-  const params = new URLSearchParams({
-    market_hash_name: marketHashName,
-    sort_by: "lowest_price",
-    limit: "50",
-    category: "1"
-  });
-
-  const url = `https://csfloat.com/api/v1/listings?${params.toString()}`;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Authorization: apiKey,
-          Accept: "application/json",
-          "User-Agent": "Mozilla/5.0"
-        }
-      });
-
-      const text = await response.text();
-
-      let data = null;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = null;
-      }
-
-      if (response.status === 401) {
-        return {
-          success: false,
-          error: "CSFloat API key rejected (401)"
-        };
-      }
-
-      if (response.status === 429) {
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          continue;
-        }
-
-        return {
-          success: false,
-          error: "CSFloat rate limited the request (429)"
-        };
-      }
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: `CSFloat request failed: ${response.status}`
-        };
-      }
-
-      if (!data) {
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          continue;
-        }
-
-        return {
-          success: false,
-          error: "CSFloat returned invalid JSON"
-        };
-      }
-
-      return summarizeCsfloatListings(data, marketHashName);
-    } catch (err) {
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        continue;
-      }
-
-      return {
-        success: false,
-        error: err.message
-      };
-    }
-  }
-
-  return {
-    success: false,
-    error: "Unknown CSFloat request failure"
-  };
 }
 
 app.get("/api/skins", async (req, res) => {
@@ -365,5 +284,5 @@ app.get("/api/csfloat-price", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });
